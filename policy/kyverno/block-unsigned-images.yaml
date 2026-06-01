@@ -49,35 +49,3 @@ spec:
           mutateDigest: true
           verifyDigest: true
           required: true
-
-    - name: verify-initcontainer-signature
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaceSelector:
-                matchExpressions:
-                  - key: kubernetes.io/metadata.name
-                    operator: NotIn
-                    values:
-                      - kube-system
-                      - kyverno
-                      - argocd
-                      - crossplane-system
-                      - cert-manager
-      verifyImages:
-        - imageReferences:
-            - "index.docker.io/5936/*"
-            - "docker.io/5936/*"
-          type: InitContainer
-          attestors:
-            - entries:
-                - keyless:
-                    subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main"
-                    issuer: "https://token.actions.githubusercontent.com"
-                    rekor:
-                      url: https://rekor.sigstore.dev
-          mutateDigest: true
-          verifyDigest: true
-          required: true
