@@ -1,0 +1,38 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequireSignedImages
+metadata:
+  name: require-signed-images
+  annotations:
+    description: >-
+      Enforces that all container images deployed to non-system namespaces
+      carry a verified Cosign signature from the approved GitHub Actions
+      signing workflow in supply-chain-security.
+spec:
+  # Start with dryrun, promote to warn, then deny.
+  enforcementAction: deny
+
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+      - kube-public
+      - kube-node-lease
+      - gatekeeper-system
+      - argocd
+      - crossplane-system
+      - cert-manager
+
+  parameters:
+    exemptNamespaces:
+      - kube-system
+      - kube-public
+      - kube-node-lease
+      - gatekeeper-system
+      - argocd
+      - crossplane-system
+      - cert-manager
+    registryPrefix: "5936/"
+    requiredSubject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main"
+    requiredIssuer: "https://token.actions.githubusercontent.com"

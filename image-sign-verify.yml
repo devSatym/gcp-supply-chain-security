@@ -1,0 +1,130 @@
+name: image-sign-verify
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # required for Sigstore keyless signing via OIDC
+
+env:
+  DOCKERHUB_USERNAME: 5936
+  DOCKERHUB_REPOSITORY: supply-chain-demo
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-sign-verify:
+    name: Build, Push, Sign, Verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -------------------------------------------------------
+      # Docker Hub login
+      # Requires two GitHub Actions secrets:
+      #   DOCKERHUB_USERNAME -- your Docker Hub username (5936)
+      #   DOCKERHUB_TOKEN    -- Docker Hub access token (not password)
+      #                         create at: hub.docker.com -> Account Settings -> Security
+      # -------------------------------------------------------
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # -------------------------------------------------------
+      # Build and push image
+      # GIT_SHA and IMAGE_DIGEST are passed as build args so the
+      # running container can expose them via the /info endpoint.
+      # IMAGE_DIGEST is not yet known at build time so we pass a
+      # placeholder -- the real digest is available post-push via
+      # steps.build.outputs.digest.
+      # -------------------------------------------------------
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            IMAGE_DIGEST=pending
+          tags: |
+            ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:${{ env.IMAGE_TAG }}
+            ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:latest
+          # Always capture the digest for signing -- tags are mutable
+          outputs: type=image,push-by-digest=false,name-canonical=true
+
+      # -------------------------------------------------------
+      # Install Cosign
+      # -------------------------------------------------------
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      # -------------------------------------------------------
+      # Sign the image (keyless via Sigstore OIDC)
+      #
+      # Keyless signing works by:
+      #   1. Cosign requests a short-lived certificate from Fulcio (Sigstore CA)
+      #      bound to the GitHub Actions OIDC token (job identity)
+      #   2. The signature + certificate are stored in Rekor (public transparency log)
+      #   3. No private key material is stored anywhere in this repo
+      #
+      # The resulting identity embedded in the certificate will be:
+      #   Subject: https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main
+      #   Issuer:  https://token.actions.githubusercontent.com
+      #
+      # This is what the Kyverno / Gatekeeper policies verify against.
+      #
+      # Docker Hub stores Cosign signatures as OCI artifacts in the same
+      # repository under a digest-derived tag (sha256-<digest>.sig).
+      # -------------------------------------------------------
+      - name: Sign image (keyless)
+        if: github.event_name != 'pull_request'
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ steps.build.outputs.digest }}"
+          echo "Signing: ${IMAGE_DIGEST}"
+          cosign sign --yes "${IMAGE_DIGEST}"
+
+      # -------------------------------------------------------
+      # Verify the signature immediately after signing.
+      # Fast-fail gate -- if this step fails the digest must not
+      # be promoted to any downstream environment.
+      # -------------------------------------------------------
+      - name: Verify image signature
+        if: github.event_name != 'pull_request'
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ steps.build.outputs.digest }}"
+          echo "Verifying: ${IMAGE_DIGEST}"
+          cosign verify \
+            --certificate-identity-regexp="https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            "${IMAGE_DIGEST}" \
+            | jq '.[0] | {subject: .optional.Subject, issuer: .optional.Issuer, signerDigest: .critical.image["docker-manifest-digest"]}'
+
+      # -------------------------------------------------------
+      # Write signed image reference to job summary
+      # -------------------------------------------------------
+      - name: Output signed image reference
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "### Signed Image" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ steps.build.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "Signed via Sigstore keyless (Fulcio + Rekor). Verified against GitHub Actions OIDC identity." >> $GITHUB_STEP_SUMMARY

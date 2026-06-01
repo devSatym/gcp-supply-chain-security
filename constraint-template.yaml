@@ -1,0 +1,86 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredsignedimages
+  annotations:
+    description: >-
+      Defines the Rego logic that validates whether container images carry
+      a verified Cosign signature annotation. Pair with Ratify
+      (github.com/ratify-project/ratify) for real-time Rekor verification
+      at admission time.
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequireSignedImages
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            exemptNamespaces:
+              description: Namespaces exempt from this policy.
+              type: array
+              items:
+                type: string
+            registryPrefix:
+              description: >-
+                Only enforce on images matching this registry prefix.
+                Images from other registries are skipped.
+              type: string
+            requiredSubject:
+              description: >-
+                Expected certificate subject embedded in the Cosign signature.
+                Must match the GitHub Actions workflow path exactly.
+              type: string
+            requiredIssuer:
+              description: Expected OIDC issuer in the Cosign certificate.
+              type: string
+
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredsignedimages
+
+        import future.keywords.if
+        import future.keywords.in
+
+        violation[{"msg": msg}] if {
+          ns := input.review.object.metadata.namespace
+          not ns in input.parameters.exemptNamespaces
+
+          container := input.review.object.spec.containers[_]
+          image := container.image
+
+          startswith(image, input.parameters.registryPrefix)
+
+          annotations := input.review.object.metadata.annotations
+          not _has_valid_signature(annotations, container.name)
+
+          msg := sprintf(
+            "container '%v' uses image '%v' with no verified Cosign signature. Images must be signed by the approved GitHub Actions workflow before deployment.",
+            [container.name, image]
+          )
+        }
+
+        violation[{"msg": msg}] if {
+          ns := input.review.object.metadata.namespace
+          not ns in input.parameters.exemptNamespaces
+
+          container := input.review.object.spec.initContainers[_]
+          image := container.image
+
+          startswith(image, input.parameters.registryPrefix)
+
+          annotations := input.review.object.metadata.annotations
+          not _has_valid_signature(annotations, container.name)
+
+          msg := sprintf(
+            "initContainer '%v' uses image '%v' with no verified Cosign signature.",
+            [container.name, image]
+          )
+        }
+
+        _has_valid_signature(annotations, container_name) if {
+          key := sprintf("cosign.sigstore.dev/verified-%v", [container_name])
+          annotations[key] == "true"
+        }

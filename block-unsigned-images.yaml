@@ -1,0 +1,83 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-unsigned-images
+  annotations:
+    policies.kyverno.io/title: Block Unsigned Container Images
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Blocks any Pod whose container images do not carry a valid Cosign
+      keyless signature issued by the GitHub Actions OIDC provider for
+      the supply-chain-security signing workflow.
+
+      Covers init containers in addition to standard containers.
+      Run in Audit mode first, then promote to Enforce.
+spec:
+  validationFailureAction: Enforce
+  background: true
+
+  rules:
+    - name: verify-image-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - kube-system
+                      - kyverno
+                      - argocd
+                      - crossplane-system
+                      - cert-manager
+      verifyImages:
+        - imageReferences:
+            - "index.docker.io/5936/*"
+            - "docker.io/5936/*"
+          attestors:
+            - entries:
+                - keyless:
+                    subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+          mutateDigest: true
+          verifyDigest: true
+          required: true
+
+    - name: verify-initcontainer-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - kube-system
+                      - kyverno
+                      - argocd
+                      - crossplane-system
+                      - cert-manager
+      verifyImages:
+        - imageReferences:
+            - "index.docker.io/5936/*"
+            - "docker.io/5936/*"
+          type: InitContainer
+          attestors:
+            - entries:
+                - keyless:
+                    subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+          mutateDigest: true
+          verifyDigest: true
+          required: true
