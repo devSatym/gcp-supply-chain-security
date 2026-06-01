@@ -1,0 +1,120 @@
+name: Sign and Attest
+
+on:
+  workflow_call:
+    inputs:
+      digest:
+        required: true
+        type: string
+    secrets:
+      dockerhub-username:
+        required: true
+      dockerhub-token:
+        required: true
+
+env:
+  DOCKERHUB_USERNAME: 5936
+  DOCKERHUB_REPOSITORY: supply-chain-demo
+
+permissions:
+  contents: read
+  id-token: write   # required for Sigstore keyless signing and attestations via OIDC
+
+jobs:
+  sign-attest:
+    name: Sign, SBOM, Provenance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Login to Docker Hub
+        uses: ./.github/actions/docker-login
+        with:
+          username: ${{ secrets.dockerhub-username }}
+          password: ${{ secrets.dockerhub-token }}
+
+      - name: Setup Cosign
+        uses: ./.github/actions/setup-cosign
+
+      - name: Setup Syft
+        uses: ./.github/actions/setup-syft
+
+      # -------------------------------------------------------
+      # Sign the image (keyless via Sigstore OIDC)
+      # -------------------------------------------------------
+      - name: Sign image (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
+          echo "Signing: ${IMAGE_DIGEST}"
+          cosign sign --yes "${IMAGE_DIGEST}"
+
+      # -------------------------------------------------------
+      # Generate SBOM and attach as attestation
+      # -------------------------------------------------------
+      - name: Generate SBOM
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
+          echo "Generating SBOM for: ${IMAGE_DIGEST}"
+          syft "${IMAGE_DIGEST}" -o spdx-json > sbom.spdx.json
+          echo "SBOM generated -- packages found:"
+          cat sbom.spdx.json | jq '.packages | length'
+
+      - name: Attest SBOM
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
+          echo "Attaching SBOM attestation to: ${IMAGE_DIGEST}"
+          cosign attest --yes \
+            --predicate sbom.spdx.json \
+            --type spdxjson \
+            "${IMAGE_DIGEST}"
+
+      # -------------------------------------------------------
+      # Generate and attach SLSA provenance attestation
+      # -------------------------------------------------------
+      - name: Generate and attest provenance
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
+
+          cat > provenance.json << PROVENANCE
+          {
+            "buildType": "https://github.com/Attestations/GitHubActionsWorkflow@v1",
+            "builder": {
+              "id": "https://github.com/actions/runner"
+            },
+            "invocation": {
+              "configSource": {
+                "uri": "git+https://github.com/${{ github.repository }}@refs/heads/main",
+                "digest": {
+                  "sha1": "${{ github.sha }}"
+                },
+                "entryPoint": ".github/workflows/image-sign-verify.yml"
+              },
+              "parameters": {
+                "event": "${{ github.event_name }}",
+                "ref": "${{ github.ref }}",
+                "workflow": "${{ github.workflow }}"
+              }
+            },
+            "materials": [
+              {
+                "uri": "git+https://github.com/${{ github.repository }}",
+                "digest": {
+                  "sha1": "${{ github.sha }}"
+                }
+              }
+            ]
+          }
+          PROVENANCE
+
+          echo "Attaching provenance attestation to: ${IMAGE_DIGEST}"
+          cosign attest --yes \
+            --predicate provenance.json \
+            --type slsaprovenance \
+            "${IMAGE_DIGEST}"

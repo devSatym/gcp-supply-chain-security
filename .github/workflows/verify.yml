@@ -1,0 +1,76 @@
+name: Verify Attestations
+
+on:
+  workflow_call:
+    inputs:
+      digest:
+        required: true
+        type: string
+
+env:
+  DOCKERHUB_USERNAME: 5936
+  DOCKERHUB_REPOSITORY: supply-chain-demo
+
+permissions:
+  contents: read
+  id-token: write   # required for cosign keyless verification
+
+jobs:
+  verify:
+    name: Verify Signature and Attestations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Cosign
+        uses: ./.github/actions/setup-cosign
+
+      - name: Verify image signature
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
+          echo "Verifying signature: ${IMAGE_DIGEST}"
+          cosign verify \
+            --certificate-identity-regexp="https://github.com/${{ github.repository }}/.github/workflows/image-sign-verify.yml@refs/heads/main" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            "${IMAGE_DIGEST}" \
+            | jq '.[0] | {subject: .optional.Subject, issuer: .optional.Issuer, signerDigest: .critical.image["docker-manifest-digest"]}'
+
+      - name: Verify SBOM attestation
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
+          echo "Verifying SBOM attestation: ${IMAGE_DIGEST}"
+          cosign verify-attestation \
+            --certificate-identity-regexp="https://github.com/${{ github.repository }}/.github/workflows/image-sign-verify.yml@refs/heads/main" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            --type spdxjson \
+            "${IMAGE_DIGEST}" \
+            | jq '.payload | @base64d | fromjson | {predicateType: .predicateType, packageCount: (.predicate.packages | length)}'
+
+      - name: Verify provenance attestation
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
+          echo "Verifying provenance attestation: ${IMAGE_DIGEST}"
+          cosign verify-attestation \
+            --certificate-identity-regexp="https://github.com/${{ github.repository }}/.github/workflows/image-sign-verify.yml@refs/heads/main" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            --type slsaprovenance \
+            "${IMAGE_DIGEST}" \
+            | jq '.payload | @base64d | fromjson | {predicateType: .predicateType, builder: .predicate.builder.id, entryPoint: .predicate.invocation.configSource.entryPoint}'
+
+      - name: Output attestation summary
+        run: |
+          echo "### Supply Chain Attestations" >> $GITHUB_STEP_SUMMARY
+          echo "| Artifact | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Image signature | signed via Sigstore keyless |" >> $GITHUB_STEP_SUMMARY
+          echo "| SBOM (SPDX JSON) | attached as OCI attestation |" >> $GITHUB_STEP_SUMMARY
+          echo "| SLSA Provenance | attached as OCI attestation |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Signed digest:** \`${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}\`" >> $GITHUB_STEP_SUMMARY

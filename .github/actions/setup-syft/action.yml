@@ -1,0 +1,8 @@
+name: Setup Syft
+description: Install Syft for SBOM generation
+
+runs:
+  using: composite
+  steps:
+    - name: Install Syft
+      uses: anchore/sbom-action/download-syft@df80a981bc6edbc4e220a492d3cbe9f5547a6e75 # v0.17.9
