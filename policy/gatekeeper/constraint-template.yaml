@@ -1,7 +1,7 @@
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
-  name: k8srequiredsignedimages
+  name: k8srequiresignedimages
   annotations:
     description: >-
       Defines the Rego logic that validates whether container images carry
@@ -39,22 +39,17 @@ spec:
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
-        package k8srequiredsignedimages
+        package k8srequiresignedimages
 
-        import future.keywords.if
-        import future.keywords.in
-
-        violation[{"msg": msg}] if {
+        violation[{"msg": msg}] {
           ns := input.review.object.metadata.namespace
-          not ns in input.parameters.exemptNamespaces
+          not is_exempt(ns)
 
           container := input.review.object.spec.containers[_]
           image := container.image
 
           startswith(image, input.parameters.registryPrefix)
-
-          annotations := input.review.object.metadata.annotations
-          not _has_valid_signature(annotations, container.name)
+          not has_valid_signature(input.review.object.metadata.annotations, container.name)
 
           msg := sprintf(
             "container '%v' uses image '%v' with no verified Cosign signature. Images must be signed by the approved GitHub Actions workflow before deployment.",
@@ -62,17 +57,15 @@ spec:
           )
         }
 
-        violation[{"msg": msg}] if {
+        violation[{"msg": msg}] {
           ns := input.review.object.metadata.namespace
-          not ns in input.parameters.exemptNamespaces
+          not is_exempt(ns)
 
           container := input.review.object.spec.initContainers[_]
           image := container.image
 
           startswith(image, input.parameters.registryPrefix)
-
-          annotations := input.review.object.metadata.annotations
-          not _has_valid_signature(annotations, container.name)
+          not has_valid_signature(input.review.object.metadata.annotations, container.name)
 
           msg := sprintf(
             "initContainer '%v' uses image '%v' with no verified Cosign signature.",
@@ -80,7 +73,11 @@ spec:
           )
         }
 
-        _has_valid_signature(annotations, container_name) if {
+        is_exempt(ns) {
+          ns == input.parameters.exemptNamespaces[_]
+        }
+
+        has_valid_signature(annotations, container_name) {
           key := sprintf("cosign.sigstore.dev/verified-%v", [container_name])
           annotations[key] == "true"
         }
