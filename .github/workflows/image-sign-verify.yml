@@ -11,7 +11,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write   # required for Sigstore keyless signing via OIDC
+  id-token: write   # required for Sigstore keyless signing and attestations via OIDC
 
 env:
   DOCKERHUB_USERNAME: 5936
@@ -20,12 +20,12 @@ env:
 
 jobs:
   build-sign-verify:
-    name: Build, Push, Sign, Verify
+    name: Build, Push, Sign, Attest, Verify
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       # -------------------------------------------------------
       # Docker Hub login
@@ -35,7 +35,7 @@ jobs:
       #                         create at: hub.docker.com -> Account Settings -> Security
       # -------------------------------------------------------
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v3.3.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -44,13 +44,10 @@ jobs:
       # Build and push image
       # GIT_SHA and IMAGE_DIGEST are passed as build args so the
       # running container can expose them via the /info endpoint.
-      # IMAGE_DIGEST is not yet known at build time so we pass a
-      # placeholder -- the real digest is available post-push via
-      # steps.build.outputs.digest.
       # -------------------------------------------------------
       - name: Build and push image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
@@ -61,7 +58,6 @@ jobs:
           tags: |
             ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:${{ env.IMAGE_TAG }}
             ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:latest
-          # Always capture the digest for signing -- tags are mutable
           outputs: type=image,push-by-digest=false,name-canonical=true
 
       # -------------------------------------------------------
@@ -71,6 +67,14 @@ jobs:
         uses: sigstore/cosign-installer@v3
         with:
           cosign-release: "v2.4.1"
+
+      # -------------------------------------------------------
+      # Install Syft (SBOM generator by Anchore)
+      # Syft scans the image layers and produces a bill of materials
+      # listing every package, library, and dependency present.
+      # -------------------------------------------------------
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0.17.9
 
       # -------------------------------------------------------
       # Sign the image (keyless via Sigstore OIDC)
@@ -84,11 +88,6 @@ jobs:
       # The resulting identity embedded in the certificate will be:
       #   Subject: https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main
       #   Issuer:  https://token.actions.githubusercontent.com
-      #
-      # This is what the Kyverno / Gatekeeper policies verify against.
-      #
-      # Docker Hub stores Cosign signatures as OCI artifacts in the same
-      # repository under a digest-derived tag (sha256-<digest>.sig).
       # -------------------------------------------------------
       - name: Sign image (keyless)
         if: github.event_name != 'pull_request'
@@ -100,9 +99,99 @@ jobs:
           cosign sign --yes "${IMAGE_DIGEST}"
 
       # -------------------------------------------------------
-      # Verify the signature immediately after signing.
-      # Fast-fail gate -- if this step fails the digest must not
-      # be promoted to any downstream environment.
+      # Generate SBOM and attach as attestation
+      #
+      # Syft scans the image and outputs an SPDX JSON document.
+      # Cosign then wraps it in a DSSE envelope, signs it with the
+      # GitHub Actions OIDC identity, and pushes it to Docker Hub
+      # as an OCI artifact alongside the image.
+      #
+      # The attestation is stored under:
+      #   sha256-<digest>.att  (in the same Docker Hub repository)
+      # -------------------------------------------------------
+      - name: Generate SBOM
+        if: github.event_name != 'pull_request'
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ steps.build.outputs.digest }}"
+          echo "Generating SBOM for: ${IMAGE_DIGEST}"
+          syft "${IMAGE_DIGEST}" -o spdx-json > sbom.spdx.json
+          echo "SBOM generated -- packages found:"
+          cat sbom.spdx.json | jq '.packages | length'
+
+      - name: Attest SBOM
+        if: github.event_name != 'pull_request'
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ steps.build.outputs.digest }}"
+          echo "Attaching SBOM attestation to: ${IMAGE_DIGEST}"
+          cosign attest --yes \
+            --predicate sbom.spdx.json \
+            --type spdxjson \
+            "${IMAGE_DIGEST}"
+
+      # -------------------------------------------------------
+      # Generate and attach SLSA provenance attestation
+      #
+      # Provenance describes HOW the image was built:
+      #   - what triggered the build (push to main)
+      #   - what commit SHA was used
+      #   - what workflow and repository produced it
+      #   - what builder ran it (GitHub Actions)
+      #
+      # This is a custom SLSA provenance predicate built from
+      # GitHub Actions context variables and attached via Cosign.
+      # For full SLSA Level 3, use slsa-github-generator instead.
+      # -------------------------------------------------------
+      - name: Generate and attest provenance
+        if: github.event_name != 'pull_request'
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ steps.build.outputs.digest }}"
+
+          # Build a SLSA provenance predicate from GitHub Actions context
+          cat > provenance.json << PROVENANCE
+          {
+            "buildType": "https://github.com/Attestations/GitHubActionsWorkflow@v1",
+            "builder": {
+              "id": "https://github.com/actions/runner"
+            },
+            "invocation": {
+              "configSource": {
+                "uri": "git+https://github.com/${{ github.repository }}@refs/heads/main",
+                "digest": {
+                  "sha1": "${{ github.sha }}"
+                },
+                "entryPoint": ".github/workflows/image-sign-verify.yml"
+              },
+              "parameters": {
+                "event": "${{ github.event_name }}",
+                "ref": "${{ github.ref }}",
+                "workflow": "${{ github.workflow }}"
+              }
+            },
+            "materials": [
+              {
+                "uri": "git+https://github.com/${{ github.repository }}",
+                "digest": {
+                  "sha1": "${{ github.sha }}"
+                }
+              }
+            ]
+          }
+          PROVENANCE
+
+          echo "Attaching provenance attestation to: ${IMAGE_DIGEST}"
+          cosign attest --yes \
+            --predicate provenance.json \
+            --type slsaprovenance \
+            "${IMAGE_DIGEST}"
+
+      # -------------------------------------------------------
+      # Verify signature and both attestations
+      # This is the fast-fail gate -- all three must pass before
+      # the digest can be promoted to any downstream environment.
       # -------------------------------------------------------
       - name: Verify image signature
         if: github.event_name != 'pull_request'
@@ -110,21 +199,52 @@ jobs:
           COSIGN_EXPERIMENTAL: "1"
         run: |
           IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ steps.build.outputs.digest }}"
-          echo "Verifying: ${IMAGE_DIGEST}"
+          echo "Verifying signature: ${IMAGE_DIGEST}"
           cosign verify \
             --certificate-identity-regexp="https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
             "${IMAGE_DIGEST}" \
             | jq '.[0] | {subject: .optional.Subject, issuer: .optional.Issuer, signerDigest: .critical.image["docker-manifest-digest"]}'
 
+      - name: Verify SBOM attestation
+        if: github.event_name != 'pull_request'
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ steps.build.outputs.digest }}"
+          echo "Verifying SBOM attestation: ${IMAGE_DIGEST}"
+          cosign verify-attestation \
+            --certificate-identity-regexp="https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            --type spdxjson \
+            "${IMAGE_DIGEST}" \
+            | jq '.payload | @base64d | fromjson | {predicateType: .predicateType, packageCount: (.predicate.packages | length)}'
+
+      - name: Verify provenance attestation
+        if: github.event_name != 'pull_request'
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ steps.build.outputs.digest }}"
+          echo "Verifying provenance attestation: ${IMAGE_DIGEST}"
+          cosign verify-attestation \
+            --certificate-identity-regexp="https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            --type slsaprovenance \
+            "${IMAGE_DIGEST}" \
+            | jq '.payload | @base64d | fromjson | {predicateType: .predicateType, builder: .predicate.builder.id, entryPoint: .predicate.invocation.configSource.entryPoint}'
+
       # -------------------------------------------------------
-      # Write signed image reference to job summary
+      # Write full attestation summary to job output
       # -------------------------------------------------------
-      - name: Output signed image reference
+      - name: Output attestation summary
         if: github.event_name != 'pull_request'
         run: |
-          echo "### Signed Image" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ steps.build.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "Signed via Sigstore keyless (Fulcio + Rekor). Verified against GitHub Actions OIDC identity." >> $GITHUB_STEP_SUMMARY
+          echo "### Supply Chain Attestations" >> $GITHUB_STEP_SUMMARY
+          echo "| Artifact | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Image signature | signed via Sigstore keyless |" >> $GITHUB_STEP_SUMMARY
+          echo "| SBOM (SPDX JSON) | attached as OCI attestation |" >> $GITHUB_STEP_SUMMARY
+          echo "| SLSA Provenance | attached as OCI attestation |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Signed digest:** \`${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY

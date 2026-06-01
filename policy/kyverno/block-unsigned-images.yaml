@@ -3,22 +3,25 @@ kind: ClusterPolicy
 metadata:
   name: block-unsigned-images
   annotations:
-    policies.kyverno.io/title: Block Unsigned Container Images
+    policies.kyverno.io/title: Block Unsigned and Unattested Container Images
     policies.kyverno.io/category: Supply Chain Security
     policies.kyverno.io/severity: high
     policies.kyverno.io/subject: Pod
     policies.kyverno.io/description: >-
-      Blocks any Pod whose container images do not carry a valid Cosign
-      keyless signature issued by the GitHub Actions OIDC provider for
-      the supply-chain-security signing workflow.
-
-      Covers init containers in addition to standard containers.
-      Run in Audit mode first, then promote to Enforce.
+      Blocks any Pod whose container images do not carry:
+        1. A valid Cosign keyless signature
+        2. A valid SBOM attestation (SPDX JSON)
+        3. A valid SLSA provenance attestation
+      All three must be present and verifiable against the GitHub Actions
+      OIDC identity for the supply-chain-security signing workflow.
 spec:
   validationFailureAction: Enforce
   background: true
 
   rules:
+    # ------------------------------------------------------------------
+    # Rule 1: verify image signature
+    # ------------------------------------------------------------------
     - name: verify-image-signature
       match:
         any:
@@ -48,4 +51,96 @@ spec:
                       url: https://rekor.sigstore.dev
           mutateDigest: false
           verifyDigest: true
+          required: true
+
+    # ------------------------------------------------------------------
+    # Rule 2: verify SBOM attestation (SPDX JSON)
+    #
+    # Checks that a Cosign attestation of type spdxjson exists and was
+    # signed by the same GitHub Actions identity. Does not parse or
+    # validate the SBOM contents -- just proves it was attached by the
+    # approved workflow.
+    # ------------------------------------------------------------------
+    - name: verify-sbom-attestation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - kube-system
+                      - kyverno
+                      - argocd
+                      - crossplane-system
+                      - cert-manager
+      verifyImages:
+        - imageReferences:
+            - "index.docker.io/5936/*"
+            - "docker.io/5936/*"
+          attestations:
+            - type: https://spdx.dev/Document
+              attestors:
+                - entries:
+                    - keyless:
+                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main"
+                        issuer: "https://token.actions.githubusercontent.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
+          mutateDigest: false
+          verifyDigest: false
+          required: true
+
+    # ------------------------------------------------------------------
+    # Rule 3: verify SLSA provenance attestation
+    #
+    # Checks that a Cosign attestation of type slsaprovenance exists
+    # and was signed by the approved workflow. The conditions block
+    # validates that the builder and entryPoint match expected values,
+    # preventing provenance from a different workflow being accepted.
+    # ------------------------------------------------------------------
+    - name: verify-provenance-attestation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - kube-system
+                      - kyverno
+                      - argocd
+                      - crossplane-system
+                      - cert-manager
+      verifyImages:
+        - imageReferences:
+            - "index.docker.io/5936/*"
+            - "docker.io/5936/*"
+          attestations:
+            - type: https://slsa.dev/provenance/v0.2
+              attestors:
+                - entries:
+                    - keyless:
+                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main"
+                        issuer: "https://token.actions.githubusercontent.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    # Verify the build was triggered by the expected workflow entrypoint
+                    - key: "{{ predicate.invocation.configSource.entryPoint }}"
+                      operator: Equals
+                      value: ".github/workflows/image-sign-verify.yml"
+                    # Verify the builder is GitHub Actions
+                    - key: "{{ predicate.builder.id }}"
+                      operator: Equals
+                      value: "https://github.com/actions/runner"
+          mutateDigest: false
+          verifyDigest: false
           required: true
