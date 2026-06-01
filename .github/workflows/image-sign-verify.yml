@@ -11,6 +11,8 @@ on:
 
 permissions:
   contents: read
+  security-events: write   # needed by security-scan.yml (SARIF upload)
+  id-token: write          # needed by sign-attest.yml and verify.yml (Sigstore OIDC)
 
 jobs:
   security-scan:
