@@ -9,7 +9,6 @@ WORKDIR /build
 # Install build tools needed for some Python packages
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY app/requirements.txt .
 RUN python -m venv /opt/venv \
@@ -44,10 +43,6 @@ COPY --from=builder /opt/venv /opt/venv
 # Copy application source
 COPY app/ .
 
-# Remove perl to remediate CVE-2026-42496 and CVE-2026-8376
-# perl-base is inherited from debian but unused in a python app
-RUN apt-get purge -y --auto-remove perl perl-base \
-    && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user and drop privileges
 RUN addgroup --system appgroup \
