@@ -46,8 +46,8 @@ jobs:
       - name: Sign image (keyless)
         env:
           COSIGN_EXPERIMENTAL: "1"
+          IMAGE_DIGEST: "${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
         run: |
-          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
           echo "Signing: ${IMAGE_DIGEST}"
           cosign sign --yes "${IMAGE_DIGEST}"
 
@@ -65,8 +65,8 @@ jobs:
       - name: Attest SBOM
         env:
           COSIGN_EXPERIMENTAL: "1"
+          IMAGE_REF: ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}
         run: |
-          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
           echo "Attaching SBOM attestation to: ${IMAGE_DIGEST}"
           cosign attest --yes \
             --predicate sbom.spdx.json \
@@ -79,9 +79,8 @@ jobs:
       - name: Generate and attest provenance
         env:
           COSIGN_EXPERIMENTAL: "1"
+          IMAGE_REF: ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}
         run: |
-          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
-
           cat > provenance.json << PROVENANCE
           {
             "buildType": "https://github.com/Attestations/GitHubActionsWorkflow@v1",
