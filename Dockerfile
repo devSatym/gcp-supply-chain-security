@@ -43,7 +43,6 @@ COPY --from=builder /opt/venv /opt/venv
 # Copy application source
 COPY app/ .
 
-
 # Create a non-root user and drop privileges
 RUN addgroup --system appgroup \
     && adduser --system --ingroup appgroup --no-create-home appuser \
