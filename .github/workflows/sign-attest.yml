@@ -1,5 +1,4 @@
 name: Sign and Attest
-
 on:
   workflow_call:
     inputs:
@@ -18,7 +17,7 @@ env:
 
 permissions:
   contents: read
-  id-token: write   # required for Sigstore keyless signing and attestations via OIDC
+  id-token: write
 
 jobs:
   sign-attest:
@@ -55,8 +54,9 @@ jobs:
       # Generate SBOM and attach as attestation
       # -------------------------------------------------------
       - name: Generate SBOM
+        env:
+          IMAGE_DIGEST: "${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
         run: |
-          IMAGE_DIGEST="${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
           echo "Generating SBOM for: ${IMAGE_DIGEST}"
           syft "${IMAGE_DIGEST}" -o spdx-json > sbom.spdx.json
           echo "SBOM generated -- packages found:"
@@ -65,7 +65,7 @@ jobs:
       - name: Attest SBOM
         env:
           COSIGN_EXPERIMENTAL: "1"
-          IMAGE_REF: ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}
+          IMAGE_DIGEST: "${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
         run: |
           echo "Attaching SBOM attestation to: ${IMAGE_DIGEST}"
           cosign attest --yes \
@@ -79,7 +79,12 @@ jobs:
       - name: Generate and attest provenance
         env:
           COSIGN_EXPERIMENTAL: "1"
-          IMAGE_REF: ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}
+          IMAGE_DIGEST: "${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
+          REPO: "${{ github.repository }}"
+          COMMIT_SHA: "${{ github.sha }}"
+          EVENT_NAME: "${{ github.event_name }}"
+          GIT_REF: "${{ github.ref }}"
+          WORKFLOW: "${{ github.workflow }}"
         run: |
           cat > provenance.json << PROVENANCE
           {
@@ -89,29 +94,28 @@ jobs:
             },
             "invocation": {
               "configSource": {
-                "uri": "git+https://github.com/${{ github.repository }}@refs/heads/main",
+                "uri": "git+https://github.com/${REPO}@refs/heads/main",
                 "digest": {
-                  "sha1": "${{ github.sha }}"
+                  "sha1": "${COMMIT_SHA}"
                 },
                 "entryPoint": ".github/workflows/image-sign-verify.yml"
               },
               "parameters": {
-                "event": "${{ github.event_name }}",
-                "ref": "${{ github.ref }}",
-                "workflow": "${{ github.workflow }}"
+                "event": "${EVENT_NAME}",
+                "ref": "${GIT_REF}",
+                "workflow": "${WORKFLOW}"
               }
             },
             "materials": [
               {
-                "uri": "git+https://github.com/${{ github.repository }}",
+                "uri": "git+https://github.com/${REPO}",
                 "digest": {
-                  "sha1": "${{ github.sha }}"
+                  "sha1": "${COMMIT_SHA}"
                 }
               }
             ]
           }
           PROVENANCE
-
           echo "Attaching provenance attestation to: ${IMAGE_DIGEST}"
           cosign attest --yes \
             --predicate provenance.json \
