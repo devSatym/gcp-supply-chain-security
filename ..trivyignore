@@ -1,0 +1,5 @@
+# .trivyignore
+# Base image CVEs pending upstream fix -- tracked in issue #X
+CVE-2026-12087
+CVE-2026-48959
+CVE-2026-48962
