@@ -4,7 +4,6 @@
 # venv directory needs to be copied into the final image.
 # ----------------------------------------------------------------
 FROM python:3.12-slim AS builder
-
 WORKDIR /build
 
 # Install build tools needed for some Python packages
@@ -13,7 +12,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY app/requirements.txt .
-
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip --no-cache-dir \
     && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
@@ -27,11 +25,9 @@ FROM python:3.12-slim AS final
 
 # Build-time args injected by GitHub Actions
 ARG GIT_SHA=unknown
-ARG IMAGE_DIGEST=unknown
 
 # Expose as env vars so the app can read them at runtime
 ENV GIT_SHA=${GIT_SHA} \
-    IMAGE_DIGEST=${IMAGE_DIGEST} \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -47,6 +43,11 @@ COPY --from=builder /opt/venv /opt/venv
 
 # Copy application source
 COPY app/ .
+
+# Remove perl to remediate CVE-2026-42496 and CVE-2026-8376
+# perl-base is inherited from debian but unused in a python app
+RUN apt-get purge -y --auto-remove perl perl-base \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user and drop privileges
 RUN addgroup --system appgroup \
