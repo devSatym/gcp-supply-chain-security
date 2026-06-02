@@ -1,33 +1,22 @@
-name: image-sign-verify
+name: Deploy
 
 on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:
 
 permissions:
   contents: read
-  security-events: write   # needed by security-scan.yml (SARIF upload)
-  id-token: write          # needed by sign-attest.yml and verify.yml (Sigstore OIDC)
+  id-token: write
+  security-events: write
 
 jobs:
-  security-scan:
-    name: Security Scan
-    uses: ./.github/workflows/security-scan.yml
-    with:
-      fail-on-findings: true
-
   build-push:
     name: Build and Push
-    needs: security-scan
     uses: ./.github/workflows/build-push.yml
     with:
       image-tag: ${{ github.sha }}
-      push: ${{ github.event_name != 'pull_request' }}
+      push: true
     secrets:
       dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
       dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -35,7 +24,6 @@ jobs:
   sign-attest:
     name: Sign and Attest
     needs: build-push
-    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/sign-attest.yml
     with:
       digest: ${{ needs.build-push.outputs.digest }}
@@ -46,7 +34,6 @@ jobs:
   verify:
     name: Verify
     needs: [build-push, sign-attest]
-    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/verify.yml
     with:
       digest: ${{ needs.build-push.outputs.digest }}
