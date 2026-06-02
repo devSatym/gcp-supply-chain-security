@@ -7,8 +7,13 @@ FROM python:3.12-slim-bookworm AS builder
 WORKDIR /build
 
 # Install build tools needed for some Python packages
+# Version pinning intentionally omitted: gcc is only used at build time in
+# this stage and is discarded from the final image. Pinning would require
+# manual bumps on every Debian security update with no runtime benefit.
+# hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY app/requirements.txt .
 RUN python -m venv /opt/venv \
