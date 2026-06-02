@@ -45,7 +45,7 @@ spec:
           attestors:
             - entries:
                 - keyless:
-                    subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main"
+                    subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/deploy.yml@refs/heads/main"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
@@ -86,12 +86,12 @@ spec:
               attestors:
                 - entries:
                     - keyless:
-                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main"
+                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/deploy.yml@refs/heads/main"
                         issuer: "https://token.actions.githubusercontent.com"
                         rekor:
                           url: https://rekor.sigstore.dev
           mutateDigest: false
-          verifyDigest: false
+          verifyDigest: true
           required: true
 
     # ------------------------------------------------------------------
@@ -99,8 +99,9 @@ spec:
     #
     # Checks that a Cosign attestation of type slsaprovenance exists
     # and was signed by the approved workflow. The conditions block
-    # validates that the builder and entryPoint match expected values,
-    # preventing provenance from a different workflow being accepted.
+    # validates that the builder, entryPoint, and source repository URI
+    # match expected values -- preventing provenance from a fork or
+    # different workflow being accepted.
     # ------------------------------------------------------------------
     - name: verify-provenance-attestation
       match:
@@ -127,7 +128,7 @@ spec:
               attestors:
                 - entries:
                     - keyless:
-                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main"
+                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/deploy.yml@refs/heads/main"
                         issuer: "https://token.actions.githubusercontent.com"
                         rekor:
                           url: https://rekor.sigstore.dev
@@ -136,11 +137,15 @@ spec:
                     # Verify the build was triggered by the expected workflow entrypoint
                     - key: "{{ predicate.invocation.configSource.entryPoint }}"
                       operator: Equals
-                      value: ".github/workflows/image-sign-verify.yml"
+                      value: ".github/workflows/deploy.yml"
                     # Verify the builder is GitHub Actions
                     - key: "{{ predicate.builder.id }}"
                       operator: Equals
                       value: "https://github.com/actions/runner"
+                    # Verify the source repository URI -- prevents provenance from a fork
+                    - key: "{{ predicate.invocation.configSource.uri }}"
+                      operator: Equals
+                      value: "git+https://github.com/musaumakau/supply-chain-security@refs/heads/main"
           mutateDigest: false
-          verifyDigest: false
+          verifyDigest: true
           required: true
