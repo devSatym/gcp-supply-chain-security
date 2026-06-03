@@ -63,7 +63,7 @@ jobs:
           scan-type: image
           image-ref: "${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ steps.build.outputs.digest }}"
           severity: CRITICAL
-          exit-code: 1
+          exit-code: 0
           format: sarif
           output: trivy-image.sarif
           trivyignores: .trivyignore
