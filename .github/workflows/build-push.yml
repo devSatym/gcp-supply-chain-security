@@ -65,7 +65,6 @@ jobs:
           severity: CRITICAL
           exit-code: 0
           format: table
-          output: trivy-image.sarif
           trivyignores: .trivyignore
 
       - name: Upload image scan SARIF
