@@ -105,7 +105,7 @@ jobs:
                 "digest": {
                   "sha1": "${COMMIT_SHA}"
                 },
-                "entryPoint": ".github/workflows/deploy.yml"
+                "entryPoint": ".github/workflows/sign-attest.yml"
               },
               "parameters": {
                 "event": "${EVENT_NAME}",

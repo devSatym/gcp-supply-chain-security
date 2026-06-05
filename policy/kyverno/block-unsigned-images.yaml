@@ -45,7 +45,7 @@ spec:
           attestors:
             - entries:
                 - keyless:
-                    subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/deploy.yml@refs/heads/main"
+                    subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
@@ -86,7 +86,7 @@ spec:
               attestors:
                 - entries:
                     - keyless:
-                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/deploy.yml@refs/heads/main"
+                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
                         issuer: "https://token.actions.githubusercontent.com"
                         rekor:
                           url: https://rekor.sigstore.dev
@@ -128,7 +128,7 @@ spec:
               attestors:
                 - entries:
                     - keyless:
-                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/deploy.yml@refs/heads/main"
+                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
                         issuer: "https://token.actions.githubusercontent.com"
                         rekor:
                           url: https://rekor.sigstore.dev
