@@ -15,48 +15,52 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       # -------------------------------------------------------
-      # Generate CycloneDX SBOM with component evidence
-      # --deep enables deeper analysis of Python packages
-      # --evidence includes component usage evidence where available
+      # Generate CycloneDX SBOM + atom reachability slices
+      # Uses the official cdxgen Docker image which bundles atom
+      # and Java so reachability slice generation works correctly
+      # for Python projects.
       # -------------------------------------------------------
-      - name: Generate CycloneDX SBOM
+      - name: Generate CycloneDX SBOM and atom slices
         run: |
-          npm install -g @cyclonedx/cdxgen
-          cdxgen -t python --deep --evidence \
-            -o bom.cdx.json \
-            .
+          mkdir -p reports && chmod 777 reports
+          docker run --rm \
+            -v "${{ github.workspace }}:/app" \
+            -w /app \
+            -e CDXGEN_DEBUG_MODE=debug \
+            ghcr.io/cyclonedx/cdxgen:latest \
+            cdxgen -t python --deep --evidence \
+              -o /app/bom.cdx.json \
+              /app
           echo "SBOM generated -- component count:"
           cat bom.cdx.json | python3 -c \
             "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
+          echo "Atom slices generated:"
+          find . -name "*.json" -path "*/slices/*" 2>/dev/null | head -20 || echo "No slice files found"
 
       # -------------------------------------------------------
-      # Run OWASP depscan reachability analysis
+      # Run depscan with the SBOM + atom slices for reachability
       # --profile research enables reachability analysis
-      # --explain produces human-readable reachability evidence
-      # Output goes to reports/ for artifact upload
+      # depscan auto-discovers atom slices in the src directory
       # -------------------------------------------------------
       - name: Run depscan reachability analysis
         continue-on-error: true   # never block the pipeline
         timeout-minutes: 10
         run: |
-          # Create reports dir and make it world-writable so the
-          # non-root container user can write output files into it
-          mkdir -p reports && chmod 777 reports
           docker run --rm \
             -v "${{ github.workspace }}:/app" \
             -v "${{ github.workspace }}/reports:/reports" \
             -w /app \
             ghcr.io/owasp-dep-scan/dep-scan:latest \
             depscan \
+              --profile research \
               -t python \
-              --bom bom.cdx.json \
+              --bom /app/bom.cdx.json \
               --src /app \
               --reports-dir /reports \
               --no-vuln-table || true
 
       # -------------------------------------------------------
       # Upload SBOM and depscan reports as artifacts
-      # Available under Actions -> run -> Artifacts
       # -------------------------------------------------------
       - name: Upload SBOM and reachability report
         if: always()
