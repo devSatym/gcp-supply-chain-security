@@ -39,7 +39,9 @@ jobs:
         continue-on-error: true   # never block the pipeline
         timeout-minutes: 10
         run: |
-          mkdir -p reports
+          # Create reports dir and make it world-writable so the
+          # non-root container user can write output files into it
+          mkdir -p reports && chmod 777 reports
           docker run --rm \
             -v "${{ github.workspace }}:/app" \
             -v "${{ github.workspace }}/reports:/reports" \
