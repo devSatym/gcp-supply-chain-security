@@ -16,31 +16,27 @@ jobs:
 
       # -------------------------------------------------------
       # Generate CycloneDX SBOM + atom reachability slices
-      # Write output to /tmp inside container to avoid permission
-      # issues (container runs as non-root, can't write to /app)
-      # then copy back to workspace for depscan and artifact upload
+      # Point at app/ subdirectory where requirements.txt and
+      # main.py actually live -- scanning repo root produces an
+      # empty SBOM since cdxgen finds no Python manifests there.
       # -------------------------------------------------------
       - name: Generate CycloneDX SBOM and atom slices
         run: |
-          chmod 777 "${{ github.workspace }}"
+          chmod o+w "${{ github.workspace }}"
           docker run --rm \
-            -v "${{ github.workspace }}:/app" \
-            -w /app \
+            -v "${{ github.workspace }}:/repo" \
+            -w /repo \
             ghcr.io/cyclonedx/cdxgen:latest \
             -t python --deep --evidence \
-            -o /tmp/bom.cdx.json \
-            /app
-          docker run --rm \
-            -v "${{ github.workspace }}:/app" \
-            ghcr.io/cyclonedx/cdxgen:latest \
-            sh -c "cp /tmp/bom.cdx.json /app/bom.cdx.json 2>/dev/null || true"
+            -o /repo/bom.cdx.json \
+            /repo/app
           echo "SBOM generated -- component count:"
-          cat bom.cdx.json 2>/dev/null | python3 -c \
-            "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))" \
-            || echo "SBOM not found or empty"
+          cat bom.cdx.json | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
 
       # -------------------------------------------------------
       # Run depscan with the SBOM + atom slices for reachability
+      # --profile research enables reachability analysis via atom
       # -------------------------------------------------------
       - name: Run depscan reachability analysis
         continue-on-error: true
@@ -48,15 +44,15 @@ jobs:
         run: |
           mkdir -p reports && chmod 777 reports
           docker run --rm \
-            -v "${{ github.workspace }}:/app" \
+            -v "${{ github.workspace }}:/repo" \
             -v "${{ github.workspace }}/reports:/reports" \
-            -w /app \
+            -w /repo \
             ghcr.io/owasp-dep-scan/dep-scan:latest \
             depscan \
               --profile research \
               -t python \
-              --bom /app/bom.cdx.json \
-              --src /app \
+              --bom /repo/bom.cdx.json \
+              --src /repo/app \
               --reports-dir /reports \
               --no-vuln-table || true
 
