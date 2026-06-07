@@ -21,6 +21,10 @@ jobs:
       dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
       dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
+  sbom-vex:
+    name: SBOM and VEX (non-blocking)
+    uses: ./.github/workflows/sbom-vex.yml
+
   sign-attest:
     name: Sign and Attest
     needs: build-push

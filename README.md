@@ -257,24 +257,9 @@ Roll out per environment: dev first, then staging, then production.
 Deploy an image from your namespace that was never signed -- should be blocked:
 
 ```bash
-# Tag and push an unsigned image into your namespace
-docker pull nginx:latest
-docker tag nginx:latest docker.io/5936/supply-chain-demo:unsigned-test
-docker push docker.io/5936/supply-chain-demo:unsigned-test
-
-# Attempt to run it -- all three Kyverno rules should fire
-kubectl run unsigned-test \
-  --image=5936/supply-chain-demo:unsigned-test \
-  --namespace=default
-# Expected:
-# Error from server: admission webhook "mutate.kyverno.svc-fail" denied the request
-# block-unsigned-images:
-#   verify-image-signature: no signatures found
-#   verify-sbom-attestation: no matching attestations
-#   verify-provenance-attestation: no matching attestations
+kubectl run unsigned-test --image=nginx:latest --namespace=default
+# Expected: Error from server: admission webhook denied the request
 ```
-
-Note: third-party images like `nginx:latest` are not subject to this policy -- enforcement only applies to images under the `5936/*` namespace. This is intentional.
 
 Deploy the signed image by digest -- should be admitted:
 

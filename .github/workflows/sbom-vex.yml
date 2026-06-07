@@ -1,0 +1,63 @@
+name: SBOM and VEX
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  cdxgen:
+    name: CycloneDX SBOM + Reachability (depscan)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      # -------------------------------------------------------
+      # Generate CycloneDX SBOM with component evidence
+      # --deep enables deeper analysis of Python packages
+      # --evidence includes component usage evidence where available
+      # -------------------------------------------------------
+      - name: Generate CycloneDX SBOM
+        run: |
+          npm install -g @cyclonedx/cdxgen
+          cdxgen -t python --deep --evidence \
+            -o bom.cdx.json \
+            .
+          echo "SBOM generated -- component count:"
+          cat bom.cdx.json | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
+
+      # -------------------------------------------------------
+      # Run OWASP depscan reachability analysis
+      # --profile research enables reachability analysis
+      # --explain produces human-readable reachability evidence
+      # Output goes to reports/ for artifact upload
+      # -------------------------------------------------------
+      - name: Run depscan reachability analysis
+        continue-on-error: true   # never block the pipeline
+        run: |
+          pip install owasp-depscan --break-system-packages -q
+          mkdir -p reports
+          depscan --profile research \
+            -t python \
+            --bom bom.cdx.json \
+            --src . \
+            --reports-dir reports \
+            --explain \
+            --no-vuln-table || true   # exit 1 on findings is expected, don't fail
+
+      # -------------------------------------------------------
+      # Upload SBOM and depscan reports as artifacts
+      # Available under Actions -> run -> Artifacts
+      # -------------------------------------------------------
+      - name: Upload SBOM and reachability report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-and-vex-${{ github.sha }}
+          path: |
+            bom.cdx.json
+            reports/
+          retention-days: 30
