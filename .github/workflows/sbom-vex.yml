@@ -37,16 +37,20 @@ jobs:
       # -------------------------------------------------------
       - name: Run depscan reachability analysis
         continue-on-error: true   # never block the pipeline
+        timeout-minutes: 10
         run: |
-          pip install owasp-depscan --break-system-packages -q
           mkdir -p reports
-          depscan --profile research \
-            -t python \
-            --bom bom.cdx.json \
-            --src . \
-            --reports-dir reports \
-            --explain \
-            --no-vuln-table || true   # exit 1 on findings is expected, don't fail
+          docker run --rm \
+            -v "${{ github.workspace }}:/app" \
+            -v "${{ github.workspace }}/reports:/reports" \
+            -w /app \
+            ghcr.io/owasp-dep-scan/dep-scan:latest \
+            depscan \
+              -t python \
+              --bom bom.cdx.json \
+              --src /app \
+              --reports-dir /reports \
+              --no-vuln-table || true
 
       # -------------------------------------------------------
       # Upload SBOM and depscan reports as artifacts
