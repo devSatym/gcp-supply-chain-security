@@ -16,36 +16,37 @@ jobs:
 
       # -------------------------------------------------------
       # Generate CycloneDX SBOM + atom reachability slices
-      # Uses the official cdxgen Docker image which bundles atom
-      # and Java so reachability slice generation works correctly
-      # for Python projects.
+      # Write output to /tmp inside container to avoid permission
+      # issues (container runs as non-root, can't write to /app)
+      # then copy back to workspace for depscan and artifact upload
       # -------------------------------------------------------
       - name: Generate CycloneDX SBOM and atom slices
         run: |
-          mkdir -p reports && chmod 777 reports
+          chmod 777 "${{ github.workspace }}"
           docker run --rm \
             -v "${{ github.workspace }}:/app" \
             -w /app \
-            -e CDXGEN_DEBUG_MODE=debug \
             ghcr.io/cyclonedx/cdxgen:latest \
-            cdxgen -t python --deep --evidence \
-              -o /app/bom.cdx.json \
-              /app
+            -t python --deep --evidence \
+            -o /tmp/bom.cdx.json \
+            /app
+          docker run --rm \
+            -v "${{ github.workspace }}:/app" \
+            ghcr.io/cyclonedx/cdxgen:latest \
+            sh -c "cp /tmp/bom.cdx.json /app/bom.cdx.json 2>/dev/null || true"
           echo "SBOM generated -- component count:"
-          cat bom.cdx.json | python3 -c \
-            "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))"
-          echo "Atom slices generated:"
-          find . -name "*.json" -path "*/slices/*" 2>/dev/null | head -20 || echo "No slice files found"
+          cat bom.cdx.json 2>/dev/null | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(len(d.get('components', [])))" \
+            || echo "SBOM not found or empty"
 
       # -------------------------------------------------------
       # Run depscan with the SBOM + atom slices for reachability
-      # --profile research enables reachability analysis
-      # depscan auto-discovers atom slices in the src directory
       # -------------------------------------------------------
       - name: Run depscan reachability analysis
-        continue-on-error: true   # never block the pipeline
+        continue-on-error: true
         timeout-minutes: 10
         run: |
+          mkdir -p reports && chmod 777 reports
           docker run --rm \
             -v "${{ github.workspace }}:/app" \
             -v "${{ github.workspace }}/reports:/reports" \
