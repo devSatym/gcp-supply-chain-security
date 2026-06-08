@@ -3,7 +3,7 @@
 # Install dependencies into a virtual environment so only the
 # venv directory needs to be copied into the final image.
 # ----------------------------------------------------------------
-FROM python:3.14.6-slim-bookworm AS builder
+FROM python:3.12-slim-bookworm AS builder
 WORKDIR /build
 
 # Install build tools needed for some Python packages
@@ -25,7 +25,7 @@ RUN python -m venv /opt/venv \
 # Distroless-style: only the venv, app code, and a non-root user.
 # No pip, no compiler, no shell package manager in the final layer.
 # ----------------------------------------------------------------
-FROM python:3.14.6-slim-bookworm AS final
+FROM python:3.12-slim-bookworm AS final
 
 # Build-time args injected by GitHub Actions
 ARG GIT_SHA=unknown
