@@ -252,7 +252,6 @@ Roll out per environment: dev first, then staging, then production.
 
 ## Testing the Policy
 
-## Testing the Policy
 
 Deploy an image from your namespace that was never signed -- should be blocked:
 
