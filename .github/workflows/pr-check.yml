@@ -4,6 +4,12 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - 'app/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/**'
+      - '.github/actions/**'
 
 permissions:
   contents: read

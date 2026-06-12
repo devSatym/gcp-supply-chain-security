@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'app/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+  workflow_dispatch:
 
 permissions:
   contents: read
