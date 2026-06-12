@@ -4,80 +4,46 @@ metadata:
   name: k8srequiresignedimages
   annotations:
     description: >-
-      Defines the Rego logic that validates whether container images carry
-      a verified Cosign signature annotation. Pair with Ratify
-      (github.com/ratify-project/ratify) for real-time Rekor verification
-      at admission time.
+      Calls Ratify's external data provider at admission time to verify
+      that container images carry a valid Cosign signature matching the
+      trust policy defined in the Ratify Verifier CRD (certificate
+      identity + OIDC issuer scoped to the approved GitHub Actions
+      signing workflow). Ratify performs the actual registry lookup and
+      signature/Rekor verification; this policy only enforces the result.
 spec:
   crd:
     spec:
       names:
         kind: K8sRequireSignedImages
-      validation:
-        openAPIV3Schema:
-          type: object
-          properties:
-            exemptNamespaces:
-              description: Namespaces exempt from this policy.
-              type: array
-              items:
-                type: string
-            registryPrefix:
-              description: >-
-                Only enforce on images matching this registry prefix.
-                Images from other registries are skipped.
-              type: string
-            requiredSubject:
-              description: >-
-                Expected certificate subject embedded in the Cosign signature.
-                Must match the GitHub Actions workflow path exactly.
-              type: string
-            requiredIssuer:
-              description: Expected OIDC issuer in the Cosign certificate.
-              type: string
-
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
-        package k8srequiresignedimages
+       package k8srequiresignedimages
 
-        violation[{"msg": msg}] {
-          ns := input.review.object.metadata.namespace
-          not is_exempt(ns)
-
-          container := input.review.object.spec.containers[_]
-          image := container.image
-
-          startswith(image, input.parameters.registryPrefix)
-          not has_valid_signature(input.review.object.metadata.annotations, container.name)
-
-          msg := sprintf(
-            "container '%v' uses image '%v' with no verified Cosign signature. Images must be signed by the approved GitHub Actions workflow before deployment.",
-            [container.name, image]
-          )
+        remote_data := response {
+          containers := object.get(input.review.object.spec, "containers", [])
+          init_containers := object.get(input.review.object.spec, "initContainers", [])
+          ephemeral_containers := object.get(input.review.object.spec, "ephemeralContainers", [])
+          all_containers := array.concat(array.concat(containers, init_containers), ephemeral_containers)
+          images := [c.image | c = all_containers[_]]
+          response := external_data({"provider": "ratify-provider", "keys": images})
         }
 
         violation[{"msg": msg}] {
-          ns := input.review.object.metadata.namespace
-          not is_exempt(ns)
-
-          container := input.review.object.spec.initContainers[_]
-          image := container.image
-
-          startswith(image, input.parameters.registryPrefix)
-          not has_valid_signature(input.review.object.metadata.annotations, container.name)
-
-          msg := sprintf(
-            "initContainer '%v' uses image '%v' with no verified Cosign signature.",
-            [container.name, image]
-          )
+          err := remote_data.system_error
+          err != ""
+          msg := sprintf("system error calling Ratify external data provider: %v", [err])
         }
 
-        is_exempt(ns) {
-          ns == input.parameters.exemptNamespaces[_]
+        violation[{"msg": msg}] {
+          count(remote_data.errors) > 0
+          msg := sprintf("one or more images could not be resolved: %v", [remote_data.errors])
         }
 
-        has_valid_signature(annotations, container_name) {
-          key := sprintf("cosign.sigstore.dev/verified-%v", [container_name])
-          annotations[key] == "true"
+        violation[{"msg": msg}] {
+          entry := remote_data.responses[_]
+          image := entry[0]
+          result := entry[1]
+          result.isSuccess == false
+          msg := sprintf("image '%v' failed Cosign signature verification", [image])
         }

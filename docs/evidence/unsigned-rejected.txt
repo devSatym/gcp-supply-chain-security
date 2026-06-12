@@ -1,0 +1,1 @@
+Error from server (Forbidden): admission webhook "validation.gatekeeper.sh" denied the request: [require-signed-images] image '5936/supply-chain-demo:unsigned-test' failed Cosign signature verification

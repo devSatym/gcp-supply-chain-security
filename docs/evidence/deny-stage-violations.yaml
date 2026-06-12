@@ -1,0 +1,71 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequireSignedImages
+metadata:
+  annotations:
+    description: Enforces that all pods in non-system namespaces use container images
+      verified by Ratify against the cosign trust policy (certificate identity + issuer
+      bound to the approved GitHub Actions signing workflow in supply-chain-security).
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"constraints.gatekeeper.sh/v1beta1","kind":"K8sRequireSignedImages","metadata":{"annotations":{"description":"Enforces that all pods in non-system namespaces use container images verified by Ratify against the cosign trust policy (certificate identity + issuer bound to the approved GitHub Actions signing workflow in supply-chain-security)."},"name":"require-signed-images"},"spec":{"enforcementAction":"deny","match":{"excludedNamespaces":["kube-system","kube-public","kube-node-lease","gatekeeper-system","argocd","crossplane-system","cert-manager","kyverno","kubernetes-dashboard"],"kinds":[{"apiGroups":[""],"kinds":["Pod"]}]}}}
+  creationTimestamp: "2026-06-26T07:07:52Z"
+  generation: 5
+  name: require-signed-images
+  resourceVersion: "1124835"
+  uid: b2b12d39-e405-4382-92e2-9cc8450ac0c5
+spec:
+  enforcementAction: deny
+  match:
+    excludedNamespaces:
+    - kube-system
+    - kube-public
+    - kube-node-lease
+    - gatekeeper-system
+    - argocd
+    - crossplane-system
+    - cert-manager
+    - kyverno
+    - kubernetes-dashboard
+    kinds:
+    - apiGroups:
+      - ""
+      kinds:
+      - Pod
+status:
+  auditTimestamp: "2026-07-03T16:00:43Z"
+  byPod:
+  - constraintUID: b2b12d39-e405-4382-92e2-9cc8450ac0c5
+    enforced: true
+    enforcementPointsStatus:
+    - enforcementPoint: vap.k8s.io
+      message: K8sNativeValidation engine is missing
+      observedGeneration: 5
+      state: error
+    id: gatekeeper-audit-55447948c5-gmc9d
+    observedGeneration: 5
+    operations:
+    - audit
+    - generate
+    - mutation-status
+    - status
+  - constraintUID: b2b12d39-e405-4382-92e2-9cc8450ac0c5
+    enforced: true
+    id: gatekeeper-controller-manager-7579667b4b-4zk2x
+    observedGeneration: 5
+    operations:
+    - mutation-webhook
+    - webhook
+  - constraintUID: b2b12d39-e405-4382-92e2-9cc8450ac0c5
+    enforced: true
+    id: gatekeeper-controller-manager-7579667b4b-gbv2v
+    observedGeneration: 5
+    operations:
+    - mutation-webhook
+    - webhook
+  - constraintUID: b2b12d39-e405-4382-92e2-9cc8450ac0c5
+    enforced: true
+    id: gatekeeper-controller-manager-7579667b4b-l4hbv
+    observedGeneration: 5
+    operations:
+    - mutation-webhook
+    - webhook
+  totalViolations: 0

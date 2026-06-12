@@ -1,0 +1,1 @@
+error: the path "test-init-unsigned.yaml" does not exist

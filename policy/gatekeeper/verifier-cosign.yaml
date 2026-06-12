@@ -1,0 +1,16 @@
+apiVersion: config.ratify.deislabs.io/v1beta1
+kind: Verifier
+metadata:
+  name: verifier-cosign
+spec:
+  name: cosign
+  artifactTypes: application/vnd.dev.cosign.artifact.sig.v1+json
+  parameters:
+    trustPolicies:
+      - name: default
+        scopes:
+          - "5936/supply-chain-demo*"
+          - "docker.io/5936/supply-chain-demo*"
+        keyless:
+          certificateIdentity: "https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
+          certificateOIDCIssuer: "https://token.actions.githubusercontent.com"
