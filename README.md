@@ -90,6 +90,7 @@ No private keys are stored anywhere. The signing identity is derived from the Gi
 │   │   ├── deploy.yml           # Triggered on push to main -- build + sign + verify
 │   │   ├── build-push.yml       # Reusable: build, push, Trivy image scan
 │   │   ├── sign-attest.yml      # Reusable: Cosign sign, Syft SBOM, SLSA provenance
+│   │   ├── sbom-vex.yml         # Reusable: SBOM + VEX generation, non-blocking
 │   │   ├── security-scan.yml    # Reusable: Semgrep SAST, Trivy filesystem
 │   │   └── verify.yml           # Reusable: verify signature + attestations
 │   └── actions/
@@ -141,6 +142,19 @@ Three reusable workflows called in sequence: `build-push` -> `sign-attest` -> `v
 ### Why this separation matters
 
 Signing happens only on `main`. No signed images are produced from feature branches. Both enforcement engines' identity checks (`sign-attest.yml@refs/heads/main`) are meaningful because they map directly to the only trigger that produces signed artifacts.
+
+### Trigger scoping
+
+Both `deploy.yml` and `pr-check.yml` are path-filtered rather than running on every push or PR:
+
+- `deploy.yml` triggers only on changes to `app/**`, `Dockerfile`, or `.dockerignore` -- a README edit or a policy YAML tweak alone does not rebuild, re-sign, or re-push an image. `workflow_dispatch` is also enabled for manual re-runs (for example, re-signing after a Sigstore outage, without needing a throwaway code change).
+- `pr-check.yml` triggers on the same application paths, plus `.github/workflows/**` and `.github/actions/**` -- changes to CI itself are scanned before merge, since a compromised or misconfigured workflow file is as much a supply chain risk as compromised application code.
+
+This keeps the pipeline from re-signing and re-pushing an image on every unrelated commit (docs, policy YAML, evidence files), while still gating anything that touches the build, the app, or the CI definitions themselves.
+
+### SBOM + VEX generation (non-blocking)
+
+`sbom-vex.yml` runs in parallel with `sign-attest` rather than gating it. This is intentional: SBOM/VEX generation and triage is valuable but shouldn't block a deploy if it's slow or transiently fails, whereas signing and attestation verification are hard gates. See [VEX](#vex-planned-enforcement-layer-currently-triage-only) below for what's currently enforced versus documented.
 
 ---
 
@@ -323,6 +337,12 @@ Any running pod that reaches `/info` has already passed through admission contro
 |---|---|
 | `DOCKERHUB_USERNAME` | Docker Hub username (`5936`) |
 | `DOCKERHUB_TOKEN` | Docker Hub access token -- create at hub.docker.com -> Account Settings -> Security |
+
+---
+
+## Dependabot Cooldown
+
+`dependabot.yml` sets `cooldown.default-days: 7` for both the `github-actions` and `pip` ecosystems. This delays Dependabot from opening a PR for a newly published release until it's been out for 7 days. A brand-new GitHub Action or pip package version is, briefly, less trustworthy than one that's had a week of real-world usage -- the cooldown gives the ecosystem time to catch obvious regressions or supply chain issues (a compromised release, a broken build) before this repo pulls it in.
 
 ---
 
