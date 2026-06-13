@@ -26,24 +26,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-
-      - name: Debug job_workflow_ref from OIDC token
-        run: |
-          OIDC_TOKEN=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" | jq -r '.value')
-
-          # JWT = header.payload.signature, base64url-encoded, no padding
-          PAYLOAD=$(echo "$OIDC_TOKEN" | cut -d '.' -f2)
-          # restore base64url -> base64 and pad to a multiple of 4
-          PAYLOAD_PADDED="${PAYLOAD//_/\/}"
-          PAYLOAD_PADDED="${PAYLOAD_PADDED//-/+}"
-          MOD=$(( ${#PAYLOAD_PADDED} % 4 ))
-          if [ $MOD -eq 2 ]; then PAYLOAD_PADDED="${PAYLOAD_PADDED}=="; fi
-          if [ $MOD -eq 3 ]; then PAYLOAD_PADDED="${PAYLOAD_PADDED}="; fi
-
-          echo "$PAYLOAD_PADDED" | base64 -d | jq '.job_workflow_ref'
-          
-
+        
       - name: Login to Docker Hub
         uses: ./.github/actions/docker-login
         with:
@@ -104,6 +87,24 @@ jobs:
           GIT_REF: "${{ github.ref }}"
           WORKFLOW: "${{ github.workflow }}"
         run: |
+          # Derive the real entryPoint from the OIDC token's job_workflow_ref claim.
+          # github.workflow_ref only resolves to the top-level calling workflow
+          # (deploy.yml), and there is no github.job_workflow_ref context property --
+          # job_workflow_ref only exists inside the OIDC JWT itself.
+          OIDC_TOKEN=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" | jq -r '.value')
+          PAYLOAD=$(echo "$OIDC_TOKEN" | cut -d '.' -f2)
+          PAYLOAD_PADDED="${PAYLOAD//_/\/}"
+          PAYLOAD_PADDED="${PAYLOAD_PADDED//-/+}"
+          MOD=$(( ${#PAYLOAD_PADDED} % 4 ))
+          if [ $MOD -eq 2 ]; then PAYLOAD_PADDED="${PAYLOAD_PADDED}=="; fi
+          if [ $MOD -eq 3 ]; then PAYLOAD_PADDED="${PAYLOAD_PADDED}="; fi
+
+          JOB_WORKFLOW_REF=$(echo "$PAYLOAD_PADDED" | base64 -d | jq -r '.job_workflow_ref')
+          ENTRY_POINT="${JOB_WORKFLOW_REF#${REPO}/}"
+          ENTRY_POINT="${ENTRY_POINT%@*}"
+          echo "Resolved entryPoint: ${ENTRY_POINT}"
+
           cat > provenance.json << PROVENANCE
           {
             "buildType": "https://github.com/Attestations/GitHubActionsWorkflow@v1",
@@ -116,7 +117,7 @@ jobs:
                 "digest": {
                   "sha1": "${COMMIT_SHA}"
                 },
-                "entryPoint": ".github/workflows/sign-attest.yml"
+                "entryPoint": "${ENTRY_POINT}"
               },
               "parameters": {
                 "event": "${EVENT_NAME}",
