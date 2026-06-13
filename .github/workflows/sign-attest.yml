@@ -30,6 +30,7 @@ jobs:
       - name: Debug workflow_ref
         run: |
           echo "workflow_ref is: ${{ github.workflow_ref }}"
+          echo "job_workflow_ref is: ${{ github.job_workflow_ref }}"
 
       - name: Login to Docker Hub
         uses: ./.github/actions/docker-login
@@ -43,9 +44,7 @@ jobs:
       - name: Setup Syft
         uses: ./.github/actions/setup-syft
 
-      # -------------------------------------------------------
       # Sign the image (keyless via Sigstore OIDC)
-      # -------------------------------------------------------
       - name: Sign image (keyless)
         env:
           COSIGN_EXPERIMENTAL: "1"
@@ -54,9 +53,7 @@ jobs:
           echo "Signing: ${IMAGE_DIGEST}"
           cosign sign --yes "${IMAGE_DIGEST}"
 
-      # -------------------------------------------------------
       # Generate SBOM and attach as attestation
-      # -------------------------------------------------------
       - name: Generate SBOM
         env:
           IMAGE_DIGEST: "${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
@@ -84,9 +81,7 @@ jobs:
             --type spdxjson \
             "${IMAGE_DIGEST}"
 
-      # -------------------------------------------------------
       # Generate and attach SLSA provenance attestation
-      # -------------------------------------------------------
       - name: Generate and attest provenance
         env:
           COSIGN_EXPERIMENTAL: "1"
