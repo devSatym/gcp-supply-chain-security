@@ -1,1 +1,1 @@
-error: the path "test-init-unsigned.yaml" does not exist
+Error from server (Forbidden): error when creating "test-init-unsigned.yaml": admission webhook "validation.gatekeeper.sh" denied the request: [require-signed-images] image 'docker.io/5936/supply-chain-demo@sha256:90c0a7f022825aa6cabf0d427e98c59dc0049b8c8a4d53474336d4e0142fda1f' failed Cosign signature verification
