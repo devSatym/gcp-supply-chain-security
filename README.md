@@ -259,6 +259,29 @@ kubectl get verifiers.config.ratify.deislabs.io
 # both should show ISSUCCESS: true
 ```
 
+### Webhook failure policy -- do this before testing enforcement
+
+Gatekeeper's Helm chart defaults `validatingWebhookFailurePolicy` to `Ignore`. That means if the admission webhook's call to Ratify doesn't return within the timeout window (3 seconds by default), the request is **admitted**, not blocked -- a slow or momentarily unreachable verifier becomes a silent bypass. This is easy to miss because the background audit loop still correctly flags the resulting pod as a violation, so `totalViolations` looks right even while unsigned pods are actively getting created.
+
+Set both the timeout and the failure policy explicitly before relying on `deny` mode:
+
+```bash
+helm upgrade gatekeeper gatekeeper/gatekeeper \
+  --namespace gatekeeper-system \
+  --reuse-values \
+  --set validatingWebhookTimeoutSeconds=10 \
+  --set validatingWebhookFailurePolicy=Fail
+```
+
+Confirm it landed:
+```bash
+kubectl get validatingwebhookconfigurations gatekeeper-validating-webhook-configuration \
+  -o jsonpath='{.webhooks[0].failurePolicy} {.webhooks[0].timeoutSeconds}'
+# should print: Fail 10
+```
+
+Note: the Helm value is `validatingWebhookFailurePolicy`, not `failurePolicy` -- the latter doesn't exist in this chart and is silently ignored with no error, which makes it easy to believe this is fixed when it isn't. See [Known Limitations](#known-limitations) for the availability tradeoff this introduces.
+
 ---
 
 ## Test Evidence
@@ -314,6 +337,23 @@ Real problems hit standing this up, kept here so the next debugging session (min
 
 6. **Kyverno webhook times out under `kubectl run`**
    Usually cluster resource pressure, not a policy bug -- check `kubectl get events -n kyverno` for `NodeNotReady` / liveness probe timeouts before assuming the policy itself is broken. On minikube with the `docker` driver, memory/CPU allocation is bounded by Docker Desktop's own resource settings, not just the host machine's.
+
+7. **An unsigned/mixed/tampered test pod is created successfully even though `enforcementAction: deny` is set and `totalViolations` correctly shows it as a violation**
+   This is not a Rego bug -- it's the Gatekeeper Helm chart's webhook `failurePolicy` defaulting to `Ignore`. When the admission webhook's call to Ratify doesn't return within `validatingWebhookTimeoutSeconds` (default: 3 seconds), Gatekeeper fails **open**: the request is admitted rather than blocked, since the webhook technically never returned a verdict in time. The background **audit** loop has no such timeout and correctly flags the violation after the fact, which is what produces the confusing symptom of "the pod exists, but the Constraint says it's a violation."
+   Fix, both parts matter:
+   ```bash
+   helm upgrade gatekeeper gatekeeper/gatekeeper \
+     --namespace gatekeeper-system \
+     --reuse-values \
+     --set validatingWebhookTimeoutSeconds=10 \
+     --set validatingWebhookFailurePolicy=Fail
+   ```
+   Note the Helm value key is `validatingWebhookFailurePolicy`, not `failurePolicy` -- the latter is silently ignored by the chart with no error, which makes this easy to think you've fixed when you haven't. Confirm with:
+   ```bash
+   kubectl get validatingwebhookconfigurations gatekeeper-validating-webhook-configuration \
+     -o jsonpath='{.webhooks[0].failurePolicy} {.webhooks[0].timeoutSeconds}'
+   ```
+   Should print `Fail 10`.
 
 ---
 
@@ -442,5 +482,6 @@ kubectl get k8srequiresignedimages require-signed-images -o yaml
 - Neither enforcement engine parses SBOM contents -- both confirm the SBOM was attached by the approved workflow, not that it contains specific packages.
 - VEX statements currently inform `.trivyignore` suppressions but are not yet a verified admission-time attestation. Wiring VEX in as a fourth Cosign attestation type is the natural next step.
 - Gatekeeper's status output reports `K8sNativeValidation engine is missing` for the `vap.k8s.io` enforcement point on clusters where that feature isn't enabled. This doesn't affect the webhook-based enforcement path used here, but it's a visible error state worth being aware of rather than ignoring.
+- **Fail-open is the Gatekeeper Helm chart default, and it is the wrong default for this project's threat model.** Out of the box, `validatingWebhookFailurePolicy` is `Ignore` -- if the admission webhook's call to Ratify doesn't return within the configured timeout (3 seconds by default), the request is admitted, not blocked. That silently defeats the entire point of enforcing signature verification whenever Ratify is slow, cold-starting, or briefly unreachable. This repo runs with `validatingWebhookFailurePolicy: Fail` and a 10-second timeout instead, which means a pod creation request is blocked, not allowed, if the verifier can't be reached in time. The tradeoff is real and worth stating plainly: with `Fail` set, a Ratify outage or Gatekeeper restart can temporarily block *all* pod creation cluster-wide, not just unsigned images, since the webhook cannot render any verdict at all. For a security control whose entire purpose is proving unsigned images can't slip through, fail-closed is the correct choice despite that availability cost -- but it is a genuine cost, and any team adopting this pattern should decide on it deliberately rather than inheriting the chart's default silently.
 - The pipeline targets Docker Hub. Migration to Amazon ECR with IRSA-based authentication is the recommended path for AWS production deployments.
 - Kyverno and Gatekeeper+Ratify are documented here as parallel options for comparison. Running both simultaneously against the same workloads in production is not recommended -- it adds operational complexity (two webhooks to reason about, two places enforcement can silently diverge) without additional security benefit over choosing one well-configured engine.
