@@ -100,11 +100,12 @@ No private keys are stored anywhere. The signing identity is derived from the Gi
 ├── policy/
 │   ├── kyverno/
 │   │   └── block-unsigned-images.yaml     # ClusterPolicy: 3 rules, Enforce mode
-│   └── gatekeeper/
-│       ├── constrainttemplate.yaml        # OPA Rego, calls Ratify via external_data
-│       ├── constraint.yaml                # K8sRequireSignedImages, namespace scope
-│       ├── store-oras.yaml                # Ratify Store CRD (ORAS, cosign-enabled)
-│       ├── verifier-cosign.yaml           # Ratify Verifier CRD (keyless trust policy)
+│   ├── gatekeeper/
+│   │   ├── constraint-template.yaml       # OPA Rego, calls Ratify via external_data
+│   │   ├── constraint.yaml                # K8sRequireSignedImages, namespace scope
+│   │   ├── store-oras.yaml                # Ratify Store CRD (ORAS, cosign-enabled)
+│   │   └── verifier-cosign.yaml           # Ratify Verifier CRD (keyless trust policy)
+│   └── test-manifests/                    # Shared test Pods, used by both engines
 │       ├── test-mixed-containers.yaml     # Test: one signed + one unsigned container
 │       └── test-init-unsigned.yaml        # Test: unsigned initContainer
 └── docs/
@@ -213,7 +214,7 @@ Gatekeeper does not verify signatures itself. It calls out to **Ratify** via the
 
 1. **`Store`** (`store-oras.yaml`) -- tells Ratify how to fetch signature/attestation artifacts from the registry (ORAS store, `cosignEnabled: true`)
 2. **`Verifier`** (`verifier-cosign.yaml`) -- defines the trust policy: which registry scopes to check, and the expected keyless certificate identity + OIDC issuer
-3. **`ConstraintTemplate`** (`constrainttemplate.yaml`) -- the Rego that calls Ratify's external data provider and turns a failed verification into a Gatekeeper violation
+3. **`ConstraintTemplate`** (`constraint-template.yaml`) -- the Rego that calls Ratify's external data provider and turns a failed verification into a Gatekeeper violation
 4. **`Constraint`** (`constraint.yaml`) -- binds the template to a scope (`Pod`, all namespaces except system/platform namespaces) and sets the enforcement stage
 
 ### Rollout stages
@@ -245,7 +246,7 @@ Order matters -- `Store` before `Verifier`, and the `ConstraintTemplate` must be
 kubectl apply -f policy/gatekeeper/store-oras.yaml
 kubectl apply -f policy/gatekeeper/verifier-cosign.yaml
 
-kubectl apply -f policy/gatekeeper/constrainttemplate.yaml
+kubectl apply -f policy/gatekeeper/constraint-template.yaml
 kubectl wait --for=condition=established \
   crd/k8srequiresignedimages.constraints.gatekeeper.sh --timeout=30s
 kubectl apply -f policy/gatekeeper/constraint.yaml
@@ -297,6 +298,8 @@ Every claim above is backed by a real command run against a live cluster, not ju
 | Pod with one signed + one unsigned container | Blocked | Yes -- `docs/evidence/mixed-containers-rejected.txt`, confirms every container in a pod spec is checked, not just the first |
 | Pod with unsigned `initContainer` | Blocked (after fix -- see below) | Yes -- `docs/evidence/init-container-rejected.txt` |
 
+Note on the `latest` tag: this pipeline tags images by commit SHA only (see [CI/CD Pipeline](#cicd-pipeline)); it never re-pushes `latest`. The `latest` tag in the table above is a fixed historical reference from when this evidence was first gathered, not something the pipeline keeps current. Don't rely on `latest` for anything beyond this table -- pin to a digest or SHA tag in any real deployment.
+
 ### A real gap found through edge-case testing: unsigned init containers
 
 The first version of the Gatekeeper Rego only read `input.review.object.spec.containers`. An unsigned image placed in `initContainers` was never sent to Ratify for verification and passed admission cleanly -- a real bypass, since init containers run with full access to the pod's volumes and can execute arbitrary code before the verified main container ever starts.
@@ -313,6 +316,32 @@ remote_data := response {
   response := external_data({"provider": "ratify-provider", "keys": images})
 }
 ```
+
+---
+
+## Kyverno Test Evidence
+
+The Gatekeeper+Ratify path above was the first to get real test evidence. The Kyverno ClusterPolicy (`policy/kyverno/block-unsigned-images.yaml`) shipped for a while with real bugs that had never been exercised against a live cluster -- it looked correct on paper and blocked every image unconditionally in practice. The bugs, how they were found, and the fixes are below, followed by the same five-case test suite run against Kyverno directly.
+
+| Test case | Expected result | Verified |
+|---|---|---|
+| Signed image (real digest, not `latest` -- see note above) | Admitted | Yes -- `docs/evidence/kyverno-signed-admitted.txt` |
+| Unsigned image (`unsigned-test`) | Blocked | Yes -- `docs/evidence/kyverno-unsigned-rejected.txt` |
+| Tampered signature (`tampered`) | Blocked | Yes -- `docs/evidence/kyverno-tampered-rejected.txt`. This one turned out to be a stronger test than intended: the `tampered` tag carries a real, valid signature, just from the pre-refactor `image-sign-verify.yml` identity rather than `sign-attest.yml`. Kyverno correctly rejected it on a `subject mismatch`, proving the policy rejects an unauthorized signer, not just a missing signature |
+| Pod with one signed + one unsigned container | Blocked | Yes -- `docs/evidence/kyverno-mixed-containers-rejected.txt` |
+| Pod with unsigned `initContainer` | Blocked | Yes -- `docs/evidence/kyverno-init-container-rejected.txt` |
+
+### Bugs found getting this evidence, and why they went unnoticed
+
+**1. Provenance rule (`verify-provenance-attestation`) used the wrong JMESPath scope and the wrong expected value.** The condition read `{{ predicate.invocation.configSource.entryPoint }}` and expected `.github/workflows/deploy.yml`. Kyverno scopes JMESPath directly to the predicate body inside an attestation condition -- there is no top-level `predicate` key -- so this failed with an unrelated-looking error before it ever got to comparing values. The correct entrypoint is also `sign-attest.yml`, the workflow that actually signs and attests, not `deploy.yml`, the orchestrator that calls it. Both mistakes meant this rule rejected every image unconditionally, signed or not, and nothing caught it because no evidence had ever been generated for this path.
+
+**2. `sign-attest.yml` hardcoded its own entrypoint as a string literal.** `entryPoint: ".github/workflows/sign-attest.yml"` was correct at the time it was written, but had no mechanism to stay correct if the file was ever renamed -- which it had been, from an earlier `image-sign-verify.yml`. Fixed by deriving it at runtime from the OIDC token's `job_workflow_ref` claim instead of a literal. Note `github.workflow_ref` (the context variable) resolves to the *calling* workflow (`deploy.yml`), not the reusable workflow actually doing the signing, and there is no `github.job_workflow_ref` context property -- `job_workflow_ref` only exists inside the OIDC JWT itself, so getting it requires requesting and decoding that token directly. See the `Generate and attest provenance` step for the extraction logic.
+
+**3. Every rule's `imageReferences` listed both `index.docker.io/5936/*` and `docker.io/5936/*`.** These aren't two registries -- `docker.io` always resolves to `index.docker.io`, so a single image matched both patterns and had its attestations fetched and loaded into Kyverno's evaluation context twice per admission request. This roughly doubled the real memory cost and masked the actual attestation size behind an inflated `context size limit exceeded` error, making an already-oversized SBOM look nearly twice as bad as it really was.
+
+**4. Kyverno's `maxContextSize` (default 2Mi) was too small for a real SBOM.** Once the duplicate pattern above was fixed, the actual combined attestation size for this image was closer to 2.9MB. Raised via `config.maxContextSize` in the Helm chart (not a raw `kubectl patch` on the ConfigMap, which gets silently reverted on the next unrelated `helm upgrade` if Kyverno is Helm-managed).
+
+None of these four were caught by code review alone -- they were only found by actually running the five test cases against a live cluster and reading the real error messages, which is the same lesson as the `initContainers` gap above: policy YAML that looks correct and policy YAML that behaves correctly are different claims, and only the second one is worth anything in production.
 
 ---
 
