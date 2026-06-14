@@ -1,0 +1,12 @@
+Error from server: admission webhook "mutate.kyverno.svc-fail" denied the request: 
+
+resource Pod/default/test-tampered was blocked due to the following policies 
+
+block-unsigned-images:
+  verify-image-signature: 'failed to verify image docker.io/5936/supply-chain-demo:tampered:
+    .attestors[0].entries[0].keyless: subject mismatch: expected https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main,
+    received https://github.com/musaumakau/supply-chain-security/.github/workflows/image-sign-verify.yml@refs/heads/main'
+  verify-provenance-attestation: 'image attestations verification failed, verifiedCount:
+    0, requiredCount: 1, error: no matching attestations: '
+  verify-sbom-attestation: 'image attestations verification failed, verifiedCount:
+    0, requiredCount: 1, error: no matching attestations: '

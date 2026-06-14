@@ -40,7 +40,6 @@ spec:
                       - cert-manager
       verifyImages:
         - imageReferences:
-            - "index.docker.io/5936/*"
             - "docker.io/5936/*"
           attestors:
             - entries:
@@ -79,7 +78,6 @@ spec:
                       - cert-manager
       verifyImages:
         - imageReferences:
-            - "index.docker.io/5936/*"
             - "docker.io/5936/*"
           attestations:
             - type: https://spdx.dev/Document
@@ -121,7 +119,6 @@ spec:
                       - cert-manager
       verifyImages:
         - imageReferences:
-            - "index.docker.io/5936/*"
             - "docker.io/5936/*"
           attestations:
             - type: https://slsa.dev/provenance/v0.2
@@ -134,16 +131,20 @@ spec:
                           url: https://rekor.sigstore.dev
               conditions:
                 - all:
-                    # Verify the build was triggered by the expected workflow entrypoint
-                    - key: "{{ predicate.invocation.configSource.entryPoint }}"
+                    # Kyverno scopes JMESPath evaluation directly to the predicate body
+                    # inside an attestation condition block -- there is no top-level
+                    # "predicate" key to descend into here. Verify the build was
+                    # triggered by the expected workflow entrypoint (the entrypoint
+                    # actually embedded by sign-attest.yml, not deploy.yml).
+                    - key: "{{ invocation.configSource.entryPoint }}"
                       operator: Equals
-                      value: ".github/workflows/deploy.yml"
+                      value: ".github/workflows/sign-attest.yml"
                     # Verify the builder is GitHub Actions
-                    - key: "{{ predicate.builder.id }}"
+                    - key: "{{ builder.id }}"
                       operator: Equals
                       value: "https://github.com/actions/runner"
                     # Verify the source repository URI -- prevents provenance from a fork
-                    - key: "{{ predicate.invocation.configSource.uri }}"
+                    - key: "{{ invocation.configSource.uri }}"
                       operator: Equals
                       value: "git+https://github.com/musaumakau/supply-chain-security@refs/heads/main"
           mutateDigest: false

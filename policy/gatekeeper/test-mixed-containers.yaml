@@ -6,7 +6,7 @@ metadata:
 spec:
   containers:
     - name: signed-container
-      image: 5936/supply-chain-demo:latest
+      image: 5936/supply-chain-demo@sha256:1a4ebba1cec3bc49af1ff7260fa7566c4b09fe5ae834d518619ef0023ae91102
       securityContext:
         allowPrivilegeEscalation: false
         runAsNonRoot: true

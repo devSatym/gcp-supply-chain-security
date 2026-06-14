@@ -1,0 +1,11 @@
+Error from server: error when creating "policy/gatekeeper/test-mixed-containers.yaml": admission webhook "mutate.kyverno.svc-fail" denied the request: 
+
+resource Pod/default/test-mixed-containers was blocked due to the following policies 
+
+block-unsigned-images:
+  verify-image-signature: 'failed to verify image docker.io/5936/supply-chain-demo@sha256:90c0a7f022825aa6cabf0d427e98c59dc0049b8c8a4d53474336d4e0142fda1f:
+    .attestors[0].entries[0].keyless: no signatures found'
+  verify-provenance-attestation: 'image attestations verification failed, verifiedCount:
+    0, requiredCount: 1, error: no matching attestations: '
+  verify-sbom-attestation: 'image attestations verification failed, verifiedCount:
+    0, requiredCount: 1, error: no matching attestations: '
