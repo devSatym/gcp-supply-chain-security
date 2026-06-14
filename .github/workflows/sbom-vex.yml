@@ -26,7 +26,7 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}:/repo" \
             -w /repo \
-            ghcr.io/cyclonedx/cdxgen:latest \
+            ghcr.io/cyclonedx/cdxgen@sha256:29babac410b88a53c8fa60038b1b9a5c26764ccb84942ca77863acf90c86e288 \
             -t python --deep --evidence \
             -o /repo/bom.cdx.json \
             /repo/app
@@ -47,7 +47,7 @@ jobs:
             -v "${{ github.workspace }}:/repo" \
             -v "${{ github.workspace }}/reports:/reports" \
             -w /repo \
-            ghcr.io/owasp-dep-scan/dep-scan:latest \
+            ghcr.io/owasp-dep-scan/dep-scan@sha256:2c4e664db8637442e06603fab2caf1484acef5556fd7fb63a9950f824b2bcec7 \
             depscan \
               --profile research \
               -t python \

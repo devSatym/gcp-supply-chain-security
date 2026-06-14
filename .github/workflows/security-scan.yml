@@ -18,7 +18,7 @@ jobs:
     name: SAST (Semgrep)
     runs-on: ubuntu-latest
     container:
-      image: semgrep/semgrep
+      image: semgrep/semgrep@sha256:06938c1f365d3f67b8cedd8bc117607ae64253f88a0e768e9da9408548927dd6
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -29,9 +29,28 @@ jobs:
         run: |
           semgrep scan \
             --config auto \
+            --error \
             --sarif \
             --output semgrep.sarif \
             .
+
+      - name: Print findings to log
+        if: always()
+        run: |
+          apk add --no-cache jq
+          jq -r '
+            .runs[].results[] |
+            "▶ \(.ruleId)\n  \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)\n  \(.message.text)\n"
+          ' semgrep.sarif
+
+      - name: Print findings to summary
+        if: always()
+        run: |
+          echo "## Semgrep Findings" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '
+            .runs[].results[] |
+            "- **\(.ruleId)** — `\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)`\n  \(.message.text)"
+          ' semgrep.sarif >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload SARIF to GitHub Security tab
         if: always()
