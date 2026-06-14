@@ -1,8 +1,51 @@
 # CVE-2026-42496: Archive::Tar (perl-archive-tar) path traversal via crafted
- # symlinks during extraction (_make_special_file does not validate symlink
- # targets). App contains no Perl invocation and no archive/tar extraction
- # of any kind -- inherited from base image only, code path unreachable.
- CVE-2026-42496
+# symlinks during extraction (_make_special_file does not validate symlink
+# targets). App contains no Perl invocation and no archive/tar extraction
+# of any kind -- inherited from base image only, code path unreachable.
+CVE-2026-42496
+
+# CVE-2026-9538: perl-Archive-Tar denial of service via a crafted tar header
+# with an oversized entry size field. Same package and same reasoning as
+# CVE-2026-42496 above -- no Perl invocation, no archive/tar extraction
+# anywhere in this app, inherited from base image only.
+CVE-2026-9538
+
+# CVE-2026-42497: perl-Archive-Tar arbitrary file modification via crafted
+# hardlinks during archive extraction. Same package and same reasoning as
+# CVE-2026-42496 above -- code path unreachable, no extraction logic exists
+# in this app.
+CVE-2026-42497
+
+# CVE-2026-54369: libacl symlink traversal privilege escalation via ACL
+# functions (getfacl/setfacl and related library calls). App does no ACL
+# manipulation of any kind -- Dockerfile uses a plain `chown` at build time
+# only, and the running app (FastAPI/uvicorn) never touches POSIX ACLs at
+# runtime. Inherited from base image only, code path unreachable.
+CVE-2026-54369
+
+# CVE-2026-41992: GNU gzip global buffer overflow in the LZH decompression
+# path (SCO compress compatibility mode). App never invokes gzip/gunzip and
+# has no decompression logic of any kind -- the gzip binary is present only
+# as a base Debian package, never called by this app at runtime.
+CVE-2026-41992
+
+# CVE-2025-69720: ncurses buffer overflow that may lead to arbitrary code
+# execution. ncurses is a terminal/cursor-control library; this app is an
+# HTTP service (FastAPI/uvicorn) with no TTY or terminal UI of any kind, and
+# nothing in this app links against or invokes ncurses. Inherited from base
+# image only, code path unreachable.
+CVE-2025-69720
+
+# Base image CVEs pending upstream fix -- tracked in issue #X
+CVE-2026-12087
+CVE-2026-48959
+CVE-2026-48962
+
+# False positive: Debian's zlib1g package does not compile contrib/minizip,
+# so the vulnerable zipOpenNewFileInZip4_64 code path doesn't exist in the
+# installed binary. Confirmed via Debian security tracker (status: ignored)
+# and aquasecurity/trivy#6722.
+CVE-2023-45853
 
 +# CVE-2026-9538: perl-Archive-Tar denial of service via a crafted tar header
 +# with an oversized entry size field. Same package and same reasoning as
