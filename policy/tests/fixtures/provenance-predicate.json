@@ -1,0 +1,28 @@
+{
+  "buildType": "https://github.com/Attestations/GitHubActionsWorkflow@v1",
+  "builder": {
+    "id": "https://github.com/actions/runner"
+  },
+  "invocation": {
+    "configSource": {
+      "uri": "git+https://github.com/musaumakau/supply-chain-security@refs/heads/main",
+      "digest": {
+        "sha1": "9f2c1b4a7e8d3f5061c2a9b8d4e7f10203a4b5c6"
+      },
+      "entryPoint": ".github/workflows/sign-attest.yml"
+    },
+    "parameters": {
+      "event": "push",
+      "ref": "refs/heads/main",
+      "workflow": "Deploy"
+    }
+  },
+  "materials": [
+    {
+      "uri": "git+https://github.com/musaumakau/supply-chain-security",
+      "digest": {
+        "sha1": "9f2c1b4a7e8d3f5061c2a9b8d4e7f10203a4b5c6"
+      }
+    }
+  ]
+}
