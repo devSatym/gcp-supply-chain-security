@@ -1,0 +1,10 @@
+# Default owner for everything in the repo unless overridden below.
+* @musaumakau
+
+# Extra scrutiny on anything that affects the trust chain itself --
+# these are the files that, if silently broken, undermine every
+# signature/attestation this pipeline produces.
+/policy/                      @musaumakau
+/.github/workflows/           @musaumakau
+/.github/actions/             @musaumakau
+/Dockerfile                   @musaumakau

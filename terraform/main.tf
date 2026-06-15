@@ -31,16 +31,23 @@ resource "github_repository_ruleset" "main_protection" {
     }
   }
 
+  # This repo currently has a single maintainer, so a "review from someone
+  # else" requirement has no one who can ever satisfy it -- it would
+  # permanently block every PR (confirmed: it did, on PR #65, requiring a
+  # manual admin bypass to merge). Rather than keep a rule that only ever
+  # gets bypassed, the review requirement is intentionally omitted here.
+  #
+  # What still fully gates every merge to main, no exceptions, for anyone
+  # including the repo owner: all required status checks below (Semgrep,
+  # Trivy, policy unit tests), no direct pushes, no force-pushes, no branch
+  # deletion. If a second maintainer/collaborator is ever added, add a
+  # `pull_request { required_approving_review_count = 1 ... }` block back
+  # into `rules` below to reinstate cross-review.
+
   rules {
+    # No one can push directly to main, or force-push/delete it.
     deletion         = true
     non_fast_forward = true
-
-    pull_request {
-      required_approving_review_count = 1
-      require_code_owner_review       = true
-      dismiss_stale_reviews_on_push   = true
-      require_last_push_approval      = true
-    }
 
     required_status_checks {
       required_check {
@@ -54,5 +61,5 @@ resource "github_repository_ruleset" "main_protection" {
       }
       strict_required_status_checks_policy = true
     }
-}
+  }
 }
