@@ -1,4 +1,4 @@
-# Troubleshooting Notes — Gatekeeper + Ratify Setup
+# Troubleshooting Notes -- Gatekeeper + Ratify Setup
 
 1. Ratify Helm install fails with "must provide a TLS certificate"
    Fix: --set featureFlags.RATIFY_CERT_ROTATION=true
