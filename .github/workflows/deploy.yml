@@ -9,6 +9,18 @@ on:
       - 'Dockerfile'
       - '.dockerignore'
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm a manual build/sign/attest run'
+        required: true
+        type: string
+
+# Prevent overlapping deploy runs from racing to sign/attest against
+# the same or adjacent commits. Queue rather than cancel, since killing
+# a signing operation mid-flight could leave a partially-attested image.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -18,6 +30,11 @@ permissions:
 jobs:
   build-push:
     name: Build and Push
+    # On a real push this always runs. On workflow_dispatch (e.g. re-signing
+    # after a Sigstore outage), it only runs if the confirm input matches --
+    # a one-click "Run workflow" button with no guard would let anyone with
+    # write access silently trigger a full rebuild-and-resign.
+    if: github.event_name == 'push' || github.event.inputs.confirm == 'deploy'
     uses: ./.github/workflows/build-push.yml
     with:
       image-tag: ${{ github.sha }}
@@ -28,6 +45,7 @@ jobs:
 
   sbom-vex:
     name: SBOM and VEX (non-blocking)
+    if: github.event_name == 'push' || github.event.inputs.confirm == 'deploy'
     uses: ./.github/workflows/sbom-vex.yml
 
   sign-attest:
