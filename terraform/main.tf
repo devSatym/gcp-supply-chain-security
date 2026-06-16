@@ -59,7 +59,14 @@ resource "github_repository_ruleset" "main_protection" {
       required_check {
         context = "PR Check / Policy Unit Tests (pull_request)"
       }
-      strict_required_status_checks_policy = true
-    }
+      
+# Intentionally disabled. This repository currently has a single maintainer,
+# so requiring every PR branch to be up to date before merging primarily
+# forces an additional CI run without providing independent review value.
+# Re-enable if the repository gains additional maintainers or experiences
+# frequent concurrent PRs, where validating against the latest default
+# branch before merge becomes more valuable.
+strict_required_status_checks_policy = false
   }
+}
 }
