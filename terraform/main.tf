@@ -72,4 +72,3 @@ resource "github_repository_ruleset" "main_protection" {
     }
   }
 }
-}
