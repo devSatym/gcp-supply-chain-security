@@ -46,21 +46,25 @@ resource "github_repository_ruleset" "main_protection" {
     non_fast_forward = true
 
     required_status_checks {
-      # Require the canonical GitHub Actions job names returned by the
-      # GitHub Rulesets API. These match the identifiers GitHub currently
-      # enforces for required checks and include the GitHub Actions
-      # integration ID to ensure the checks originate from the expected
-      # source.
+    # Require the canonical GitHub Actions job names as returned by the
+    # Rulesets API (short context, not the full "Workflow / Job (event)"
+    # path shown on the PR page -- that mismatch caused a stuck, silently
+    # unsatisfiable required check earlier). integration_id pins each check
+    # to the GitHub Actions app specifically, so a context-string collision
+    # from some other integration can't accidentally satisfy this rule.
       required_check {
         context = "Policy Unit Tests"
+        integration_id = 15368    
       }
 
       required_check {
         context = "Security Scan / SAST (Semgrep)"
+        integration_id = 15368
       }
 
       required_check {
         context = "Security Scan / Vulnerability Scan (Trivy)"
+        integration_id = 15368
       }
 
       # Intentionally disabled. This repository currently has a single
