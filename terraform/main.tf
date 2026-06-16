@@ -31,42 +31,45 @@ resource "github_repository_ruleset" "main_protection" {
     }
   }
 
-  # This repo currently has a single maintainer, so a "review from someone
-  # else" requirement has no one who can ever satisfy it -- it would
-  # permanently block every PR (confirmed: it did, on PR #65, requiring a
-  # manual admin bypass to merge). Rather than keep a rule that only ever
-  # gets bypassed, the review requirement is intentionally omitted here.
+  # This repository currently has a single maintainer, so requiring an
+  # approving review would permanently block every PR. The review rule is
+  # intentionally omitted until additional maintainers are added.
   #
-  # What still fully gates every merge to main, no exceptions, for anyone
-  # including the repo owner: all required status checks below (Semgrep,
-  # Trivy, policy unit tests), no direct pushes, no force-pushes, no branch
-  # deletion. If a second maintainer/collaborator is ever added, add a
-  # `pull_request { required_approving_review_count = 1 ... }` block back
-  # into `rules` below to reinstate cross-review.
+  # Merges are still protected by:
+  # - Required CI status checks
+  # - No direct branch deletion
+  # - No force pushes
 
   rules {
-    # No one can push directly to main, or force-push/delete it.
+    # Protect the default branch from destructive updates.
     deletion         = true
     non_fast_forward = true
 
     required_status_checks {
+      # Require the canonical GitHub Actions job names returned by the
+      # GitHub Rulesets API. These match the identifiers GitHub currently
+      # enforces for required checks and include the GitHub Actions
+      # integration ID to ensure the checks originate from the expected
+      # source.
       required_check {
-        context = "PR Check / Security Scan / SAST (Semgrep) (pull_request)"
+        context = "Policy Unit Tests"
       }
+
       required_check {
-        context = "PR Check / Security Scan / Vulnerability Scan (Trivy) (pull_request)"
+        context = "Security Scan / SAST (Semgrep)"
       }
+
       required_check {
-        context = "PR Check / Policy Unit Tests (pull_request)"
+        context = "Security Scan / Vulnerability Scan (Trivy)"
       }
-      
-# Intentionally disabled. This repository currently has a single maintainer,
-# so requiring every PR branch to be up to date before merging primarily
-# forces an additional CI run without providing independent review value.
-# Re-enable if the repository gains additional maintainers or experiences
-# frequent concurrent PRs, where validating against the latest default
-# branch before merge becomes more valuable.
-strict_required_status_checks_policy = false
+
+      # Intentionally disabled. This repository currently has a single
+      # maintainer, so requiring the PR branch to be up to date before
+      # merging mostly forces an additional CI run without improving review
+      # quality. Revisit this if additional maintainers are added or the
+      # repository begins handling multiple concurrent PRs.
+      strict_required_status_checks_policy = false
+    }
   }
 }
 }
