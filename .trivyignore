@@ -60,3 +60,13 @@ CVE-2023-45853
 # and no sqlite3 usage of any kind -- three static FastAPI routes only.
 # Vulnerable code path is unreachable.
 CVE-2025-7458
+
+# CVE-2026-53615: libblkid integer overflow in parse_dos_extended() (DOS/MBR
+# extended partition table parser) -- triggered only when libblkid probes a
+# crafted disk image or block device (e.g. via udisks2 on USB insertion, or
+# mount/lsblk/fsck). App (app/main.py) is a FastAPI/uvicorn service with
+# three static routes, no database, and no disk/partition/block-device
+# operations of any kind. libblkid is present only as a transitive
+# util-linux dependency inherited from the base image -- code path
+# unreachable.
+CVE-2026-53615
