@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supply-chain-demo
+  namespace: default
+  labels:
+    app: supply-chain-demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: supply-chain-demo
+  template:
+    metadata:
+      labels:
+        app: supply-chain-demo
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: supply-chain-demo
+          # Pinned by digest, not tag -- this is the exact image that was
+          # signed and attested by sign-attest.yml. A tag can be repointed
+          # later; a digest cannot, which is the whole point of testing
+          # Kyverno's verifyImages against it.
+          image: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/supply-chain-demo@sha256:cc52d2fbd3678cf16b0df5ff21a78a6d3c68d32778a1b5589182310e9a56e37a
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - containerPort: 8000 # ASSUMPTION -- confirm against Dockerfile's EXPOSE / uvicorn --port
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
