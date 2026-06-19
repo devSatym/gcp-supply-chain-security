@@ -4,9 +4,10 @@
 # venv directory needs to be copied into the final image.
 # ----------------------------------------------------------------
 FROM python:3.12-slim-bookworm AS builder
+
 WORKDIR /build
 
-# Install build tools needed for some Python packages
+# Install build tools needed for some Python packages.
 # Version pinning intentionally omitted: gcc is only used at build time in
 # this stage and is discarded from the final image. Pinning would require
 # manual bumps on every Debian security update with no runtime benefit.
@@ -16,21 +17,23 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY app/requirements.txt .
+
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip --no-cache-dir \
     && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
+
 # ----------------------------------------------------------------
 # Stage 2 -- final image
-# Distroless-style: only the venv, app code, and a non-root user.
-# No pip, no compiler, no shell package manager in the final layer.
+# Runtime image containing only the virtual environment,
+# application code, and a non-root user.
 # ----------------------------------------------------------------
 FROM python:3.12-slim-bookworm AS final
 
 # Build-time args injected by GitHub Actions
 ARG GIT_SHA=unknown
 
-# Expose as env vars so the app can read them at runtime
+# Runtime environment
 ENV GIT_SHA=${GIT_SHA} \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -42,18 +45,26 @@ LABEL org.opencontainers.image.revision="${GIT_SHA}"
 
 WORKDIR /app
 
-# Copy only the venv from the builder -- no pip or build tools in final image
+# Copy only the virtual environment from the builder
 COPY --from=builder /opt/venv /opt/venv
 
 # Copy application source
 COPY app/ .
 
-# Create a non-root user and drop privileges
-RUN addgroup --system appgroup \
-    && adduser --system --ingroup appgroup --no-create-home appuser \
-    && chown -R appuser:appgroup /app
+# Create a dedicated non-root user with a fixed UID/GID.
+# Using numeric IDs allows Kubernetes to verify runAsNonRoot.
+RUN groupadd --gid 10001 appgroup \
+    && useradd \
+        --uid 10001 \
+        --gid appgroup \
+        --create-home \
+        --home-dir /home/appuser \
+        --shell /usr/sbin/nologin \
+        appuser \
+    && chown -R 10001:10001 /app
 
-USER appuser
+# Run as the numeric non-root user
+USER 10001:10001
 
 EXPOSE 8000
 
