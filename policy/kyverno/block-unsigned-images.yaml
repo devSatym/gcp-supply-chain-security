@@ -40,7 +40,8 @@ spec:
                       - cert-manager
       verifyImages:
         - imageReferences:
-            - "docker.io/5936/*"
+            - "europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/*"
+
           attestors:
             - entries:
                 - keyless:
@@ -78,7 +79,8 @@ spec:
                       - cert-manager
       verifyImages:
         - imageReferences:
-            - "docker.io/5936/*"
+            - "europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/*"
+
           attestations:
             - type: https://spdx.dev/Document
               attestors:
@@ -119,7 +121,8 @@ spec:
                       - cert-manager
       verifyImages:
         - imageReferences:
-            - "docker.io/5936/*"
+            - "europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/*"
+
           attestations:
             - type: https://slsa.dev/provenance/v0.2
               attestors:

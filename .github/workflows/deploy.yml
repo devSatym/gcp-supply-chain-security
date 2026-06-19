@@ -39,9 +39,7 @@ jobs:
     with:
       image-tag: ${{ github.sha }}
       push: true
-    secrets:
-      dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
-      dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+
 
   sbom-vex:
     name: SBOM and VEX (non-blocking)
@@ -54,9 +52,7 @@ jobs:
     uses: ./.github/workflows/sign-attest.yml
     with:
       digest: ${{ needs.build-push.outputs.digest }}
-    secrets:
-      dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
-      dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+  
 
   verify:
     name: Verify

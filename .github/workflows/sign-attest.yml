@@ -5,15 +5,12 @@ on:
       digest:
         required: true
         type: string
-    secrets:
-      dockerhub-username:
-        required: true
-      dockerhub-token:
-        required: true
 
 env:
-  DOCKERHUB_USERNAME: 5936
-  DOCKERHUB_REPOSITORY: supply-chain-demo
+  GAR_LOCATION: europe-west1
+  GAR_PROJECT_ID: stoked-citizen-455416-g4
+  GAR_REPOSITORY: supply-chain-security
+  IMAGE_NAME: supply-chain-demo
 
 permissions:
   contents: read
@@ -26,12 +23,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        
-      - name: Login to Docker Hub
-        uses: ./.github/actions/docker-login
+
+      - name: Authenticate to GCP
+        uses: ./.github/actions/gcp-auth
         with:
-          username: ${{ secrets.dockerhub-username }}
-          password: ${{ secrets.dockerhub-token }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SA_EMAIL }}
+          registry: ${{ env.GAR_LOCATION }}-docker.pkg.dev
 
       - name: Setup Cosign
         uses: ./.github/actions/setup-cosign
@@ -43,7 +41,7 @@ jobs:
       - name: Sign image (keyless)
         env:
           COSIGN_EXPERIMENTAL: "1"
-          IMAGE_DIGEST: "${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
+          IMAGE_DIGEST: "${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GAR_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}@${{ inputs.digest }}"
         run: |
           echo "Signing: ${IMAGE_DIGEST}"
           cosign sign --yes "${IMAGE_DIGEST}"
@@ -51,7 +49,7 @@ jobs:
       # Generate SBOM and attach as attestation
       - name: Generate SBOM
         env:
-          IMAGE_DIGEST: "${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
+          IMAGE_DIGEST: "${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GAR_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}@${{ inputs.digest }}"
         run: |
           echo "Generating SBOM for: ${IMAGE_DIGEST}"
           syft "${IMAGE_DIGEST}" -o spdx-json > sbom.spdx.json
@@ -68,7 +66,7 @@ jobs:
       - name: Attest SBOM
         env:
           COSIGN_EXPERIMENTAL: "1"
-          IMAGE_DIGEST: "${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
+          IMAGE_DIGEST: "${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GAR_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}@${{ inputs.digest }}"
         run: |
           echo "Attaching SBOM attestation to: ${IMAGE_DIGEST}"
           cosign attest --yes \
@@ -80,7 +78,7 @@ jobs:
       - name: Generate and attest provenance
         env:
           COSIGN_EXPERIMENTAL: "1"
-          IMAGE_DIGEST: "${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}@${{ inputs.digest }}"
+          IMAGE_DIGEST: "${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GAR_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}@${{ inputs.digest }}"
           REPO: "${{ github.repository }}"
           COMMIT_SHA: "${{ github.sha }}"
           EVENT_NAME: "${{ github.event_name }}"
