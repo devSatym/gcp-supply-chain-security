@@ -1,0 +1,11 @@
+Error from server: error when creating "policy/test-manifests/test-init-unsigned.yaml": admission webhook "mutate.kyverno.svc-fail" denied the request: 
+
+resource Pod/default/test-init-unsigned was blocked due to the following policies 
+
+block-unsigned-images:
+  verify-image-signature: 'failed to verify image europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/supply-chain-demo:unsigned-test:
+    .attestors[0].entries[0].keyless: no signatures found'
+  verify-provenance-attestation: 'image attestations verification failed, verifiedCount:
+    0, requiredCount: 1, error: no matching attestations: '
+  verify-sbom-attestation: 'image attestations verification failed, verifiedCount:
+    0, requiredCount: 1, error: no matching attestations: '
