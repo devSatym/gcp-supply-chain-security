@@ -3,15 +3,21 @@ kind: Application
 metadata:
   name: supply-chain-demo
   namespace: argocd
+
 spec:
   project: default
+
   source:
     repoURL: https://github.com/musaumakau/supply-chain-security.git
     targetRevision: main
-    path: k8s/manifests
+    path: k8s/helm/supply-chain-demo
+    helm:
+      releaseName: supply-chain-demo
+
   destination:
     server: https://kubernetes.default.svc
     namespace: default
+
   syncPolicy:
     automated:
       prune: true
