@@ -8,6 +8,16 @@ on:
         required: false
         type: boolean
         default: true
+      run-scan:
+        description: >-
+          Whether to actually run the scan jobs. False when the calling
+          workflow determined no relevant paths changed -- jobs still get a
+          real "skipped" status this way, which satisfies a required check,
+          rather than never running at all (see pr-check.yml for why that
+          distinction matters).
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -16,6 +26,7 @@ permissions:
 jobs:
   semgrep:
     name: SAST (Semgrep)
+    if: inputs.run-scan
     runs-on: ubuntu-latest
     container:
       image: semgrep/semgrep@sha256:06938c1f365d3f67b8cedd8bc117607ae64253f88a0e768e9da9408548927dd6
@@ -49,7 +60,7 @@ jobs:
           echo "## Semgrep Findings" >> "$GITHUB_STEP_SUMMARY"
           jq -r '
             .runs[].results[] |
-            "- **\(.ruleId)** — `\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)`\n  \(.message.text)"
+            "- **\(.ruleId)** -- `\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)`\n  \(.message.text)"
           ' semgrep.sarif >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload SARIF to GitHub Security tab
@@ -67,6 +78,7 @@ jobs:
 
   trivy:
     name: Vulnerability Scan (Trivy)
+    if: inputs.run-scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

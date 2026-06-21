@@ -4,30 +4,60 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'app/**'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - '.github/workflows/**'
-      - '.github/actions/**'
-      - 'policy/**'
-      - 'terraform/**'
-      - 'CODEOWNERS'
-      - '.github/CODEOWNERS'
+    # No paths filter here on purpose. A path-filtered trigger means the
+    # whole workflow never runs at all for a commit outside those paths --
+    # GitHub then leaves the required checks stuck "Pending" forever for
+    # that commit, permanently blocking merge (confirmed firsthand: this is
+    # exactly what happened when Helm chart changes landed in a path this
+    # filter didn't cover). Skipping is instead handled per-job below via
+    # `if:`, since a job skipped by a conditional correctly reports
+    # "skipped" -- which GitHub treats as a passing required check -- while
+    # a workflow that never triggers reports nothing at all.
 
 permissions:
   contents: read
   security-events: write
+  pull-requests: read  # required by dorny/paths-filter to read the PR diff
 
 jobs:
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Filter changed paths
+        id: filter
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+        with:
+          filters: |
+            relevant:
+              - 'app/**'
+              - 'Dockerfile'
+              - '.dockerignore'
+              - '.github/workflows/**'
+              - '.github/actions/**'
+              - 'policy/**'
+              - 'terraform/**'
+              - 'k8s/helm/**'
+              - 'CODEOWNERS'
+              - '.github/CODEOWNERS'
+
   security-scan:
     name: Security Scan
+    needs: changes
     uses: ./.github/workflows/security-scan.yml
     with:
       fail-on-findings: true
+      run-scan: ${{ needs.changes.outputs.relevant == 'true' }}
 
   policy-test:
     name: Policy Unit Tests
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -46,8 +76,3 @@ jobs:
 
       - name: Verify Kyverno Rule 3 conditions against a real provenance predicate
         run: python3 policy/tests/test_jmespath_conditions.py
-
-
-
-
-

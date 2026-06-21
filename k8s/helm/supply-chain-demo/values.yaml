@@ -1,4 +1,4 @@
-replicaCount: 4
+replicaCount: 10
 
 image:
   repository: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/supply-chain-demo
