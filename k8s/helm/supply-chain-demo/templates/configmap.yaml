@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: supply-chain-demo-config
+  labels:
+    app.kubernetes.io/name: supply-chain-demo
+data:
+  APP_NAME: "Supply Chain Demo"
+  ENVIRONMENT: "dev"
+  LOG_LEVEL: "INFO"

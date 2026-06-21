@@ -38,6 +38,9 @@ spec:
               drop:
                 - ALL
 
+          env:
+           - configMapRef:
+              name: supply-chain-demo-config
           ports:
             - containerPort: {{ .Values.containerPort }}
 
