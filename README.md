@@ -39,7 +39,9 @@ PR merged to main
 deploy.yml
   -- build-push.yml
        -- docker buildx build (python:3.12-slim-bookworm, multi-stage)
-       -- push to Docker Hub by SHA tag only (no :latest)
+       -- push to Google Artifact Registry by SHA tag only (no :latest)
+            -- Registry: europe-west1-docker.pkg.dev/<project>/supply-chain-security/supply-chain-demo
+            -- Auth: Workload Identity Federation (OIDC token exchange, no static keys)
        -- Trivy image scan post-push (CRITICAL, exit 1)
        -- SARIF uploaded to GitHub Security tab
        |
@@ -70,7 +72,7 @@ Kubernetes admission (Kyverno ClusterPolicy, or Gatekeeper + Ratify -- see below
   [Pod blocked if any check fails]
 ```
 
-No private keys are stored anywhere. The signing identity is derived from the GitHub Actions OIDC token and pinned to the Sigstore public transparency log (Rekor). Certificate lifetime is ~10 minutes -- the durable proof lives in Rekor.
+No private keys are stored anywhere in the CI pipeline. The signing identity is derived from the GitHub Actions OIDC token and pinned to the Sigstore public transparency log (Rekor). Certificate lifetime is ~10 minutes -- the durable proof lives in Rekor.
 
 **What this proves, and what it doesn't.** Everything above establishes that an image was built, signed, and attested by an unmodified run of this repo's CI against a specific commit on `main` -- that's a real, verifiable claim, and it's the whole point of the pipeline. It does not establish that the code in that commit is trustworthy. Signing happens automatically for anything merged to `main`; there's no human-approval gate baked into the signing step itself. Branch protection (see [Repository Structure](#repository-structure) and `terraform/main.tf`) is what closes that second gap -- required status checks, no direct pushes, no force-pushes -- not the signing pipeline. A malicious or simply broken PR that passes Semgrep and Trivy (both of which catch known-bad *patterns*, not intent) and gets merged will be signed, attested, and admitted exactly as cleanly as legitimate code. This is a standard, expected scope boundary for any SLSA-style provenance system, not a flaw specific to this repo -- but it's worth stating plainly rather than leaving implicit, since "signed and attested" can otherwise read as a stronger guarantee than it actually is.
 
@@ -96,7 +98,8 @@ No private keys are stored anywhere. The signing identity is derived from the Gi
 │   │   ├── security-scan.yml    # Reusable: Semgrep SAST, Trivy filesystem
 │   │   └── verify.yml           # Reusable: verify signature + attestations
 │   └── actions/
-│       ├── docker-login/        # Composite: Docker Hub login
+│       ├── gcp-auth/            # Composite: GCP Workload Identity Federation + GAR login
+│       ├── docker-login/        # Composite: Docker Hub login (legacy, kept for reference)
 │       ├── setup-cosign/        # Composite: install Cosign
 │       └── setup-syft/          # Composite: install Syft
 ├── policy/
@@ -105,12 +108,17 @@ No private keys are stored anywhere. The signing identity is derived from the Gi
 │   ├── gatekeeper/
 │   │   ├── constraint-template.yaml       # OPA Rego, calls Ratify via external_data
 │   │   ├── constraint.yaml                # K8sRequireSignedImages, namespace scope
-│   │   ├── store-oras.yaml                # Ratify Store CRD (ORAS, cosign-enabled)
+│   │   ├── store-oras.yaml                # Ratify Store CRD (ORAS, cosign-enabled, k8Secrets auth)
 │   │   └── verifier-cosign.yaml           # Ratify Verifier CRD (keyless trust policy)
 │   └── test-manifests/                    # Shared test Pods, used by both engines
-│       ├── test-mixed-containers.yaml     # Test: one signed + one unsigned container
-│       └── test-init-unsigned.yaml        # Test: unsigned initContainer
+│       ├── test-mixed-containers.yaml     # Test: signed main container + unsigned initContainer
+│       └── test-init-unsigned.yaml        # Test: unsigned initContainer only
+├── argocd/
+│   ├── supply-chain-demo-app.yaml         # Happy-path ArgoCD Application (automated sync)
+│   └── supply-chain-test-negative-app.yaml # Negative-test Application (manual sync only)
 └── docs/
+    ├── decisions/
+    │   └── ratify-gcp-auth-tradeoff.md    # ADR: why Ratify uses a static JSON key for GAR auth
     └── evidence/
         ├── deny-stage-violations.yaml     # Live Constraint status during deny-stage testing
         ├── unsigned-rejected.txt          # Raw admission rejection, unsigned image
@@ -125,6 +133,31 @@ No private keys are stored anywhere. The signing identity is derived from the Gi
 ---
 
 ## Pipeline Design
+
+### Registry: Google Artifact Registry via Workload Identity Federation
+
+Images are stored in Google Artifact Registry (GAR), not Docker Hub. Authentication from GitHub Actions to GCP uses Workload Identity Federation -- no service account JSON keys are stored as GitHub secrets.
+
+```
+GitHub Actions OIDC token
+       |
+       v
+GCP STS (token exchange)
+       |
+       v
+Short-lived GCP access token
+       |
+       v
+GAR push (supply-chain-ci@... SA, roles/artifactregistry.writer, repo-scoped)
+```
+
+The WIF pool (`github-pool`) and provider (`github-provider`) are scoped to this repo via an `attribute.repository` condition -- tokens from other repos in the same org cannot exchange for credentials to this registry.
+
+The reusable composite action at `.github/actions/gcp-auth/action.yml` wraps `google-github-actions/auth` and `gcloud auth configure-docker`. All workflows that need GAR access call this action rather than duplicating the auth logic.
+
+**Required repository variables** (not secrets -- these aren't sensitive):
+- `GCP_WORKLOAD_IDENTITY_PROVIDER` -- the full WIF provider resource name
+- `GCP_SA_EMAIL` -- `supply-chain-ci@<project>.iam.gserviceaccount.com`
 
 ### PR gate (pr-check.yml)
 
@@ -206,6 +239,17 @@ The third condition is the critical one -- it prevents provenance generated from
 
 **Important note on condition keys:** Kyverno decodes the attestation and scopes JMESPath evaluation directly to the predicate body. Condition keys should reference `{{ invocation.configSource.entryPoint }}`, not `{{ predicate.invocation.configSource.entryPoint }}` -- there is no top-level `predicate` key to descend into once inside an attestation condition block. Writing it with the `predicate.` prefix produces `JMESPath query failed: Unknown key "predicate" in path` and silently blocks every pod, signed or not.
 
+**`maxContextSize`:** Kyverno's default context size limit (2Mi) is too small for a combined signature + SBOM + provenance attestation payload (real-world size for this image: ~5.7MB combined, because the limit is cumulative across all `verifyImages` rules in a single admission review, not per-attestation). Raised via Helm:
+
+```bash
+helm upgrade kyverno kyverno/kyverno \
+  --namespace kyverno \
+  --reuse-values \
+  --set config.maxContextSize=8Mi
+```
+
+Do not patch the ConfigMap directly -- it gets silently reverted on the next `helm upgrade`.
+
 ---
 
 ## Enforcement, Option B: Gatekeeper + Ratify
@@ -214,31 +258,74 @@ Gatekeeper does not verify signatures itself. It calls out to **Ratify** via the
 
 ### Chain of resources, in dependency order
 
-1. **`Store`** (`store-oras.yaml`) -- tells Ratify how to fetch signature/attestation artifacts from the registry (ORAS store, `cosignEnabled: true`)
+1. **`Store`** (`store-oras.yaml`) -- tells Ratify how to fetch signature/attestation artifacts from the registry (ORAS store, `cosignEnabled: true`, `k8Secrets` authProvider pointing at `ratify-gar-regcred`)
 2. **`Verifier`** (`verifier-cosign.yaml`) -- defines the trust policy: which registry scopes to check, and the expected keyless certificate identity + OIDC issuer
 3. **`ConstraintTemplate`** (`constraint-template.yaml`) -- the Rego that calls Ratify's external data provider and turns a failed verification into a Gatekeeper violation
 4. **`Constraint`** (`constraint.yaml`) -- binds the template to a scope (`Pod`, all namespaces except system/platform namespaces) and sets the enforcement stage
 
-### Rollout stages
+### GAR authentication for Ratify
 
-`enforcementAction` supports a staged rollout, each stage was independently tested against real signed, unsigned, and tampered images:
+Ratify needs read access to GAR to pull Cosign signatures and attestations stored alongside images. Unlike the CI pipeline (which uses Workload Identity Federation) and Kyverno (which uses GKE Workload Identity via KSA → GSA binding), **Ratify has no native GCP Workload Identity auth provider**. Its `k8Secrets` authProvider is the only viable option for GCP.
 
-- **`dryrun`** -- observes only, records violations in `.status.violations`, blocks nothing
-- **`warn`** -- pod is still created, but the admission response carries a visible warning
-- **`deny`** -- pod creation is rejected outright at admission time
+The `k8Secrets` provider reads a `kubernetes.io/dockerconfigjson` Secret at verification time -- but Ratify hardcodes a 12-hour credential TTL (`const secretTimeout = time.Hour * 12` in `pkg/common/oras/authprovider/k8secret_authprovider.go`). This makes any short-lived token refresh approach (CronJob, External Secrets Operator) unsafe: a GCP OAuth2 access token expires in ~1 hour, and Ratify will keep using the stale token for up to 11 more hours regardless of Secret content updates.
+
+The only reliable option is a **long-lived GCP service account JSON key**, scoped minimally to `roles/artifactregistry.reader` on the single `supply-chain-security` repository. This is a deliberate, documented exception to the otherwise-keyless posture of this pipeline -- not a shortcut, but a genuine upstream limitation. See `docs/decisions/ratify-gcp-auth-tradeoff.md` for the full decision record.
+
+The key is stored as a `kubernetes.io/dockerconfigjson` Secret (`ratify-gar-regcred`) in `gatekeeper-system`, managed via Terraform (see `gcp-infrastructure-modules` repo). **Rotate every 90 days.**
+
+### Installing Gatekeeper
+
+```bash
+helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
+helm repo update
+
+helm install gatekeeper gatekeeper/gatekeeper \
+  --namespace gatekeeper-system \
+  --create-namespace \
+  --set enableExternalData=true \
+  --set validatingWebhookTimeoutSeconds=5 \
+  --set mutatingWebhookTimeoutSeconds=2 \
+  --set externaldataProviderResponseCacheTTL=10s
+```
 
 ### Installing Ratify
 
 ```bash
-helm repo add ratify https://notaryproject.github.io/ratify
+helm repo add ratify https://ratify-project.github.io/ratify
 helm repo update
-helm install ratify ratify/ratify \
+
+helm install ratify ratify/ratify --atomic \
   --namespace gatekeeper-system \
-  --set policy.useRego=true \
-  --set featureFlags.RATIFY_CERT_ROTATION=true
+  --set featureFlags.RATIFY_CERT_ROTATION=true \
+  --set oras.authProviders.k8secretsEnabled=true
 ```
 
-`RATIFY_CERT_ROTATION=true` is required for local/test clusters -- without it, the chart expects you to supply your own TLS certificate for Ratify's webhook server via `--set-file provider.tls.crt=... provider.tls.key=...`, which is the right call for production but unnecessary overhead for a demo cluster.
+`RATIFY_CERT_ROTATION=true` is required -- without it, the chart expects you to supply your own TLS certificate for Ratify's webhook server, which is unnecessary overhead for this setup.
+
+`oras.authProviders.k8secretsEnabled=true` enables the `k8Secrets` auth provider in Ratify's ORAS store so it can read the GAR credentials Secret.
+
+### Creating the GAR credentials Secret
+
+After running `terraform apply` in `gcp-infrastructure-modules/environments/prod/`:
+
+```bash
+# Extract the key from Terraform state and create the k8s Secret
+./create-ratify-secret.sh
+```
+
+Do not commit the JSON key or the rendered Secret manifest to git. The script handles extraction from Terraform state and idempotent Secret creation via `--dry-run=client | kubectl apply`.
+
+### Disable the Gatekeeper mutating webhook
+
+The Gatekeeper Helm chart installs a mutating webhook (`gatekeeper-mutating-webhook-configuration`) in addition to the validating webhook. The mutating webhook calls Ratify's `/ratify/gatekeeper/v1/mutate` endpoint to resolve image tags to digests before admission -- but this path does **not** inherit the Store CRD's `k8Secrets` authProvider config. On GCP, every admission request hits a 403 from GAR before the validating webhook even runs.
+
+Since this repo uses digest-pinned images (no tag resolution needed), the mutating webhook provides no benefit and should be deleted:
+
+```bash
+kubectl delete mutatingwebhookconfiguration gatekeeper-mutating-webhook-configuration
+```
+
+The validating webhook (`gatekeeper-validating-webhook-configuration`) is unaffected and continues to enforce the policy.
 
 ### Applying the CRDs
 
@@ -257,14 +344,29 @@ kubectl apply -f policy/gatekeeper/constraint.yaml
 Confirm both Ratify resources report healthy before testing:
 
 ```bash
-kubectl get stores.config.ratify.deislabs.io
-kubectl get verifiers.config.ratify.deislabs.io
+kubectl get store,verifier -n gatekeeper-system
 # both should show ISSUCCESS: true
 ```
 
+If `verifier-cosign` shows `CONFIG_INVALID: 'key' and 'rekorURL' are part of Cosign legacy configuration`, the Helm install injected a stale `key:` field into the on-cluster object. Remove it:
+
+```bash
+kubectl patch verifier verifier-cosign \
+  --type=json \
+  -p='[{"op": "remove", "path": "/spec/parameters/key"}]'
+```
+
+### Rollout stages
+
+`enforcementAction` supports a staged rollout, each stage was independently tested against real signed, unsigned, and tampered images:
+
+- **`dryrun`** -- observes only, records violations in `.status.violations`, blocks nothing
+- **`warn`** -- pod is still created, but the admission response carries a visible warning
+- **`deny`** -- pod creation is rejected outright at admission time
+
 ### Webhook failure policy -- do this before testing enforcement
 
-Gatekeeper's Helm chart defaults `validatingWebhookFailurePolicy` to `Ignore`. That means if the admission webhook's call to Ratify doesn't return within the timeout window (3 seconds by default), the request is **admitted**, not blocked -- a slow or momentarily unreachable verifier becomes a silent bypass. This is easy to miss because the background audit loop still correctly flags the resulting pod as a violation, so `totalViolations` looks right even while unsigned pods are actively getting created.
+Gatekeeper's Helm chart defaults `validatingWebhookFailurePolicy` to `Ignore`. That means if the admission webhook's call to Ratify doesn't return within the timeout window, the request is **admitted**, not blocked -- a slow or momentarily unreachable verifier becomes a silent bypass. This is easy to miss because the background audit loop still correctly flags the resulting pod as a violation, so `totalViolations` looks right even while unsigned pods are actively getting created.
 
 Set both the timeout and the failure policy explicitly before relying on `deny` mode:
 
@@ -289,102 +391,117 @@ Note: the Helm value is `validatingWebhookFailurePolicy`, not `failurePolicy` --
 
 ## Test Evidence
 
-Every claim above is backed by a real command run against a live cluster, not just policy YAML that's assumed to work. Raw output lives in `docs/evidence/`.
+Every claim above is backed by a real command run against a live GKE cluster (`prod-cluster`, `europe-west1`), not just policy YAML that's assumed to work. Raw output lives in `docs/evidence/`.
+
+### Gatekeeper + Ratify
 
 | Test case | Expected result | Verified |
 |---|---|---|
-| Signed image (`latest`) | Admitted | Yes -- passes at all three stages |
-| Unsigned image (`unsigned-test`) | Blocked | Yes -- `docs/evidence/unsigned-rejected.txt` |
-| Tampered signature (`tampered`) | Blocked | Yes -- `docs/evidence/tampered-rejected.txt`, proves Ratify checks cryptographic validity, not just presence of a signature |
-| Excluded namespace + unsigned image | Admitted (exclusion honored) | Yes -- `docs/evidence/excluded-namespace-allowed.txt` |
-| Pod with one signed + one unsigned container | Blocked | Yes -- `docs/evidence/mixed-containers-rejected.txt`, confirms every container in a pod spec is checked, not just the first |
-| Pod with unsigned `initContainer` | Blocked (after fix -- see below) | Yes -- `docs/evidence/init-container-rejected.txt` |
+| Signed image via ArgoCD (digest-pinned) | Admitted, `Synced`/`Healthy` | Yes |
+| Unsigned image via `kubectl run` | Blocked at admission | Yes -- `[require-signed-images] image '...' failed Cosign signature verification` |
+| Signed image still admitted after flipping to `deny` mode | Admitted | Yes -- ArgoCD app remains `Synced`/`Healthy` |
+| Pod with signed main container + unsigned `initContainer` | Blocked, unsigned init container called out | Yes -- only the `unsigned-test` image appears in the rejection |
 
-Note on the `latest` tag: this pipeline tags images by commit SHA only (see [CI/CD Pipeline](#cicd-pipeline)); it never re-pushes `latest`. The `latest` tag in the table above is a fixed historical reference from when this evidence was first gathered, not something the pipeline keeps current. Don't rely on `latest` for anything beyond this table -- pin to a digest or SHA tag in any real deployment.
+### Kyverno
 
-### A real gap found through edge-case testing: unsigned init containers
-
-The first version of the Gatekeeper Rego only read `input.review.object.spec.containers`. An unsigned image placed in `initContainers` was never sent to Ratify for verification and passed admission cleanly -- a real bypass, since init containers run with full access to the pod's volumes and can execute arbitrary code before the verified main container ever starts.
-
-Found and fixed by systematically testing beyond the happy path rather than assuming `containers[]` coverage was complete. Full before/after proof, including the exact rejected-then-blocked commands, is in `docs/evidence/init-container-gap-fix.md`. The fix extends the Rego to concatenate `containers`, `initContainers`, and `ephemeralContainers` before building the image list sent to Ratify:
-
-```rego
-remote_data := response {
-  containers := object.get(input.review.object.spec, "containers", [])
-  init_containers := object.get(input.review.object.spec, "initContainers", [])
-  ephemeral_containers := object.get(input.review.object.spec, "ephemeralContainers", [])
-  all_containers := array.concat(array.concat(containers, init_containers), ephemeral_containers)
-  images := [c.image | c = all_containers[_]]
-  response := external_data({"provider": "ratify-provider", "keys": images})
-}
-```
+| Test case | Expected result | Verified |
+|---|---|---|
+| Signed image via ArgoCD (digest-pinned) | Admitted, `Synced`/`Healthy` | Yes -- `docs/evidence/kyverno-signed-admitted.txt` |
+| Unsigned image via `kubectl apply` | Blocked | Yes -- `docs/evidence/kyverno-unsigned-rejected-gke.txt` |
+| Unsigned image via ArgoCD (negative-test Application) | `SyncFailed` | Yes |
+| Tampered signature | Blocked | Yes -- `docs/evidence/kyverno-tampered-rejected.txt`. The `tampered` tag carries a real, valid signature from a different workflow identity (`image-sign-verify.yml`). Kyverno correctly rejected on subject mismatch, proving it checks the signer identity, not just signature presence |
+| Pod with signed main container + unsigned `initContainer` | Blocked, init container called out | Yes -- `docs/evidence/kyverno-mixed-containers-rejected-gke.txt` |
 
 ---
 
-## Kyverno Test Evidence
+## Kyverno Bugs Found During Live Testing
 
-The Gatekeeper+Ratify path above was the first to get real test evidence. The Kyverno ClusterPolicy (`policy/kyverno/block-unsigned-images.yaml`) shipped for a while with real bugs that had never been exercised against a live cluster -- it looked correct on paper and blocked every image unconditionally in practice. The bugs, how they were found, and the fixes are below, followed by the same five-case test suite run against Kyverno directly.
+The Kyverno ClusterPolicy shipped for a while with real bugs that had never been exercised against a live cluster -- it looked correct on paper and blocked every image unconditionally in practice. The bugs, how they were found, and the fixes are below.
 
-| Test case | Expected result | Verified |
-|---|---|---|
-| Signed image (real digest, not `latest` -- see note above) | Admitted | Yes -- `docs/evidence/kyverno-signed-admitted.txt` |
-| Unsigned image (`unsigned-test`) | Blocked | Yes -- `docs/evidence/kyverno-unsigned-rejected.txt` |
-| Tampered signature (`tampered`) | Blocked | Yes -- `docs/evidence/kyverno-tampered-rejected.txt`. This one turned out to be a stronger test than intended: the `tampered` tag carries a real, valid signature, just from the pre-refactor `image-sign-verify.yml` identity rather than `sign-attest.yml`. Kyverno correctly rejected it on a `subject mismatch`, proving the policy rejects an unauthorized signer, not just a missing signature |
-| Pod with one signed + one unsigned container | Blocked | Yes -- `docs/evidence/kyverno-mixed-containers-rejected.txt` |
-| Pod with unsigned `initContainer` | Blocked | Yes -- `docs/evidence/kyverno-init-container-rejected.txt` |
+**1. Provenance rule used the wrong JMESPath scope and the wrong expected value.** The condition read `{{ predicate.invocation.configSource.entryPoint }}` and expected `.github/workflows/deploy.yml`. Kyverno scopes JMESPath directly to the predicate body inside an attestation condition -- there is no top-level `predicate` key -- so this failed with an unrelated-looking error before it ever got to comparing values. The correct entrypoint is also `sign-attest.yml`, the workflow that actually signs and attests, not `deploy.yml`, the orchestrator that calls it. Both mistakes meant this rule rejected every image unconditionally, signed or not, and nothing caught it because no evidence had ever been generated for this path.
 
-### Bugs found getting this evidence, and why they went unnoticed
+**2. `sign-attest.yml` hardcoded its own entrypoint as a string literal.** Fixed by deriving it at runtime from the OIDC token's `job_workflow_ref` claim instead. Note `github.workflow_ref` (the context variable) resolves to the *calling* workflow (`deploy.yml`), not the reusable workflow actually doing the signing -- `job_workflow_ref` only exists inside the OIDC JWT itself.
 
-**1. Provenance rule (`verify-provenance-attestation`) used the wrong JMESPath scope and the wrong expected value.** The condition read `{{ predicate.invocation.configSource.entryPoint }}` and expected `.github/workflows/deploy.yml`. Kyverno scopes JMESPath directly to the predicate body inside an attestation condition -- there is no top-level `predicate` key -- so this failed with an unrelated-looking error before it ever got to comparing values. The correct entrypoint is also `sign-attest.yml`, the workflow that actually signs and attests, not `deploy.yml`, the orchestrator that calls it. Both mistakes meant this rule rejected every image unconditionally, signed or not, and nothing caught it because no evidence had ever been generated for this path.
+**3. Every rule's `imageReferences` listed both `index.docker.io/5936/*` and `docker.io/5936/*`.** These aren't two registries -- `docker.io` always resolves to `index.docker.io`, so a single image matched both patterns and had its attestations fetched twice per admission request, roughly doubling the real memory cost and masking the actual attestation size behind an inflated context size error.
 
-**2. `sign-attest.yml` hardcoded its own entrypoint as a string literal.** `entryPoint: ".github/workflows/sign-attest.yml"` was correct at the time it was written, but had no mechanism to stay correct if the file was ever renamed -- which it had been, from an earlier `image-sign-verify.yml`. Fixed by deriving it at runtime from the OIDC token's `job_workflow_ref` claim instead of a literal. Note `github.workflow_ref` (the context variable) resolves to the *calling* workflow (`deploy.yml`), not the reusable workflow actually doing the signing, and there is no `github.job_workflow_ref` context property -- `job_workflow_ref` only exists inside the OIDC JWT itself, so getting it requires requesting and decoding that token directly. See the `Generate and attest provenance` step for the extraction logic.
+**4. Kyverno's `maxContextSize` (default 2Mi) was too small for a real SBOM.** Real combined attestation size for this image: ~5.7MB (cumulative across all `verifyImages` rules in one admission review, not per-attestation). Raised via Helm to 8Mi.
 
-**3. Every rule's `imageReferences` listed both `index.docker.io/5936/*` and `docker.io/5936/*`.** These aren't two registries -- `docker.io` always resolves to `index.docker.io`, so a single image matched both patterns and had its attestations fetched and loaded into Kyverno's evaluation context twice per admission request. This roughly doubled the real memory cost and masked the actual attestation size behind an inflated `context size limit exceeded` error, making an already-oversized SBOM look nearly twice as bad as it really was.
-
-**4. Kyverno's `maxContextSize` (default 2Mi) was too small for a real SBOM.** Once the duplicate pattern above was fixed, the actual combined attestation size for this image was closer to 2.9MB. Raised via `config.maxContextSize` in the Helm chart (not a raw `kubectl patch` on the ConfigMap, which gets silently reverted on the next unrelated `helm upgrade` if Kyverno is Helm-managed).
-
-None of these four were caught by code review alone -- they were only found by actually running the five test cases against a live cluster and reading the real error messages, which is the same lesson as the `initContainers` gap above: policy YAML that looks correct and policy YAML that behaves correctly are different claims, and only the second one is worth anything in production.
+None of these four were caught by code review alone -- they were only found by actually running the test cases against a live cluster and reading the real error messages.
 
 ---
 
 ## Troubleshooting
 
-Real problems hit standing this up, kept here so the next debugging session (mine or anyone else's) doesn't start from zero. Full detail in `docs/evidence/troubleshooting-notes.md`.
+Real problems hit standing this up, kept here so the next debugging session doesn't start from zero. Full detail in `docs/evidence/troubleshooting-notes.md`.
 
 1. **Ratify Helm install fails: "must provide a TLS certificate"**
-   Fix: `--set featureFlags.RATIFY_CERT_ROTATION=true` for local/test clusters.
+   Fix: `--set featureFlags.RATIFY_CERT_ROTATION=true`.
 
-2. **`Verifier` stuck at `CONFIG_INVALID` even after fixing the YAML on disk**
+2. **`Verifier` stuck at `CONFIG_INVALID: 'key' and 'rekorURL' are part of Cosign legacy configuration`**
+   The Helm chart injects a default `key: /usr/local/ratify-certs/cosign/cosign.pub` field into the `verifier-cosign` object. `kubectl apply` merges rather than replaces, so the stale field persists even after you fix your local YAML. Remove it with a JSON patch:
+   ```bash
+   kubectl patch verifier verifier-cosign \
+     --type=json \
+     -p='[{"op": "remove", "path": "/spec/parameters/key"}]'
+   ```
+
+3. **Gatekeeper mutating webhook blocks every admission with 403 before the validating webhook runs**
+   The `ratify-mutation-provider` calls Ratify's `/mutate` endpoint to resolve image tags to digests. This path does not use the Store CRD's `k8Secrets` authProvider and hits GAR unauthenticated. Since this repo uses digest-pinned images, the mutating webhook is unnecessary:
+   ```bash
+   kubectl delete mutatingwebhookconfiguration gatekeeper-mutating-webhook-configuration
+   ```
+
+4. **Ratify auth fails (403) even after creating `ratify-gar-regcred` and restarting the pod**
+   The Secret was probably created before the `gatekeeper-system` namespace existed (e.g. before Gatekeeper was installed), and namespace deletion during reinstall deleted it silently. Verify:
+   ```bash
+   kubectl get secret ratify-gar-regcred -n gatekeeper-system
+   ```
+   If not found, re-run `create-ratify-secret.sh` from `gcp-infrastructure-modules/environments/prod/`.
+
+5. **Correctly signed image still rejected after creating the Secret -- but only in the audit loop, not at admission**
+   Ratify's credential cache TTL is hardcoded at 12 hours (`const secretTimeout = time.Hour * 12`). A pod restart forces a fresh credential load; a Secret update alone does not:
+   ```bash
+   kubectl rollout restart deployment/ratify -n gatekeeper-system
+   ```
+
+6. **`Verifier` stuck at `CONFIG_INVALID: the verificationCertStores configuration is invalid`**
+   This is `verifier-notation`, a Helm default that requires a cert store you haven't configured. It does not affect Cosign verification. Ignore it or delete the Notation verifier if the noise is unwanted.
+
+7. **`Constraint` stuck at `CONFIG_INVALID` even after fixing YAML on disk**
    `kubectl apply` performs a two-way merge -- stale fields from an earlier, broken version of the resource persist even when the file no longer contains them. Fix: `kubectl delete` then `kubectl apply`, not repeated `apply`.
 
-3. **Cosign trust policy field is `scopes`, not `registryScopes`**
+8. **Cosign trust policy field is `scopes`, not `registryScopes`**
    `registryScopes` is the Notation verifier's field name. Using it on a Cosign `Verifier` produces `CONFIG_INVALID: scopes parameter is required`.
 
-4. **Gatekeeper reports 0 violations even when Ratify is correctly rejecting images**
+9. **Gatekeeper reports 0 violations even when Ratify is correctly rejecting images**
    Ratify surfaces per-image verification failures under `remote_data.responses[].isSuccess`, not `remote_data.errors` (that field is reserved for system-level failures like an unreachable registry). Rego that only checks `errors` will silently pass every image regardless of actual verification outcome.
 
-5. **Correctly signed image still rejected: "none of the expected identities matched"**
-   The `Verifier`'s `certificateIdentity` must exactly match the workflow file that actually produced the signature. A typo or a stale reference to a renamed workflow file causes real, correctly-signed images to fail identity matching.
+10. **Correctly signed image still rejected: "none of the expected identities matched"**
+    The `Verifier`'s `certificateIdentity` must exactly match the workflow file that actually produced the signature. A typo or a stale reference to a renamed workflow file causes real, correctly-signed images to fail identity matching.
 
-6. **Kyverno webhook times out under `kubectl run`**
-   Usually cluster resource pressure, not a policy bug -- check `kubectl get events -n kyverno` for `NodeNotReady` / liveness probe timeouts before assuming the policy itself is broken. On minikube with the `docker` driver, memory/CPU allocation is bounded by Docker Desktop's own resource settings, not just the host machine's.
+11. **An unsigned/mixed/tampered test pod is created successfully even though `enforcementAction: deny` is set and `totalViolations` correctly shows it as a violation**
+    This is the Gatekeeper Helm chart's webhook `failurePolicy` defaulting to `Ignore`. When the admission webhook's call to Ratify doesn't return within `validatingWebhookTimeoutSeconds`, Gatekeeper fails **open**. Fix:
+    ```bash
+    helm upgrade gatekeeper gatekeeper/gatekeeper \
+      --namespace gatekeeper-system \
+      --reuse-values \
+      --set validatingWebhookTimeoutSeconds=10 \
+      --set validatingWebhookFailurePolicy=Fail
+    ```
+    Confirm: `kubectl get validatingwebhookconfigurations gatekeeper-validating-webhook-configuration -o jsonpath='{.webhooks[0].failurePolicy} {.webhooks[0].timeoutSeconds}'` should print `Fail 10`.
 
-7. **An unsigned/mixed/tampered test pod is created successfully even though `enforcementAction: deny` is set and `totalViolations` correctly shows it as a violation**
-   This is not a Rego bug -- it's the Gatekeeper Helm chart's webhook `failurePolicy` defaulting to `Ignore`. When the admission webhook's call to Ratify doesn't return within `validatingWebhookTimeoutSeconds` (default: 3 seconds), Gatekeeper fails **open**: the request is admitted rather than blocked, since the webhook technically never returned a verdict in time. The background **audit** loop has no such timeout and correctly flags the violation after the fact, which is what produces the confusing symptom of "the pod exists, but the Constraint says it's a violation."
-   Fix, both parts matter:
-   ```bash
-   helm upgrade gatekeeper gatekeeper/gatekeeper \
-     --namespace gatekeeper-system \
-     --reuse-values \
-     --set validatingWebhookTimeoutSeconds=10 \
-     --set validatingWebhookFailurePolicy=Fail
-   ```
-   Note the Helm value key is `validatingWebhookFailurePolicy`, not `failurePolicy` -- the latter is silently ignored by the chart with no error, which makes this easy to think you've fixed when you haven't. Confirm with:
-   ```bash
-   kubectl get validatingwebhookconfigurations gatekeeper-validating-webhook-configuration \
-     -o jsonpath='{.webhooks[0].failurePolicy} {.webhooks[0].timeoutSeconds}'
-   ```
-   Should print `Fail 10`.
+12. **Kyverno webhook times out under `kubectl run`**
+    Usually cluster resource pressure, not a policy bug -- check `kubectl get events -n kyverno` for `NodeNotReady` / liveness probe timeouts before assuming the policy itself is broken.
+
+13. **`constraint-template.yaml` rejected with `unknown field "spec.crd.names"`**
+    Indentation bug: `names:` must be nested under `spec:`, not a sibling of it:
+    ```yaml
+    # Correct
+    crd:
+      spec:
+        names:
+          kind: K8sRequireSignedImages
+    ```
 
 ---
 
@@ -402,18 +519,29 @@ Any running pod that reaches `/info` has already passed through admission contro
 
 ---
 
-## Required GitHub Secrets
+## Required Configuration
 
-| Secret | Description |
+### GitHub repository variables (not secrets)
+
+| Variable | Value |
 |---|---|
-| `DOCKERHUB_USERNAME` | Docker Hub username (`5936`) |
-| `DOCKERHUB_TOKEN` | Docker Hub access token -- create at hub.docker.com -> Account Settings -> Security |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<number>/locations/global/workloadIdentityPools/github-pool/providers/github-provider` |
+| `GCP_SA_EMAIL` | `supply-chain-ci@<project>.iam.gserviceaccount.com` |
+
+### GCP infrastructure
+
+The GCP infrastructure (VPC, GKE cluster, IAM, Workload Identity pool/provider, GAR repository) is managed in a separate repo (`gcp-infrastructure-modules`) via Terraform. Required resources:
+
+- Workload Identity Federation pool + provider scoped to `musaumakau/supply-chain-security`
+- `supply-chain-ci` GSA with `roles/artifactregistry.writer` (repo-scoped) for CI pushes
+- `kyverno-gar-reader` GSA with `roles/artifactregistry.reader` (repo-scoped) bound to Kyverno KSAs via Workload Identity
+- `ratify-gar-reader` GSA with `roles/artifactregistry.reader` (repo-scoped), long-lived JSON key stored as `ratify-gar-regcred` in `gatekeeper-system`
 
 ---
 
 ## Dependabot Cooldown
 
-`dependabot.yml` sets `cooldown.default-days: 7` for both the `github-actions` and `pip` ecosystems. This delays Dependabot from opening a PR for a newly published release until it's been out for 7 days. A brand-new GitHub Action or pip package version is, briefly, less trustworthy than one that's had a week of real-world usage -- the cooldown gives the ecosystem time to catch obvious regressions or supply chain issues (a compromised release, a broken build) before this repo pulls it in.
+`dependabot.yml` sets `cooldown.default-days: 7` for both the `github-actions` and `pip` ecosystems. This delays Dependabot from opening a PR for a newly published release until it's been out for 7 days. A brand-new GitHub Action or pip package version is, briefly, less trustworthy than one that's had a week of real-world usage -- the cooldown gives the ecosystem time to catch obvious regressions or supply chain issues before this repo pulls it in.
 
 ---
 
@@ -439,18 +567,21 @@ curl http://localhost:8000/info
 ## Verifying a Signed Image Manually
 
 ```bash
+REGISTRY="europe-west1-docker.pkg.dev/<project>/supply-chain-security/supply-chain-demo"
+DIGEST="sha256:<digest>"
+
 # Verify signature
 cosign verify \
   --certificate-identity-regexp="https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  5936/supply-chain-demo@sha256:<digest>
+  "${REGISTRY}@${DIGEST}"
 
 # Verify SBOM attestation
 cosign verify-attestation \
   --certificate-identity-regexp="https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   --type spdxjson \
-  5936/supply-chain-demo@sha256:<digest> \
+  "${REGISTRY}@${DIGEST}" \
   | jq '.payload | @base64d | fromjson | {predicateType, packageCount: (.predicate.packages | length)}'
 
 # Verify provenance attestation
@@ -458,13 +589,13 @@ cosign verify-attestation \
   --certificate-identity-regexp="https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   --type slsaprovenance \
-  5936/supply-chain-demo@sha256:<digest> \
+  "${REGISTRY}@${DIGEST}" \
   | jq '.payload | @base64d | fromjson | {predicateType, builder: .predicate.builder.id, entryPoint: .predicate.invocation.configSource.entryPoint}'
 ```
 
 ---
 
-## Deploying to EKS
+## Deploying to a New Cluster
 
 Start any new enforcement engine in an observe-only mode first, roll out per environment (dev, then staging, then production).
 
@@ -482,9 +613,14 @@ kubectl patch clusterpolicy block-unsigned-images \
 **Gatekeeper + Ratify:**
 ```bash
 # Constraint starts in dryrun -- see enforcementAction in constraint.yaml
-kubectl apply -f policy/gatekeeper/
-kubectl get k8srequiresignedimages require-signed-images -o yaml
-# Promote through warn, then deny, once violations look correct
+# Install Gatekeeper and Ratify (see above), create GAR Secret, delete mutating webhook
+kubectl apply -f policy/gatekeeper/store-oras.yaml
+kubectl apply -f policy/gatekeeper/verifier-cosign.yaml
+kubectl apply -f policy/gatekeeper/constraint-template.yaml
+kubectl apply -f policy/gatekeeper/constraint.yaml
+# Verify dryrun violations look correct, then promote:
+kubectl patch k8srequiresignedimages require-signed-images \
+  --type=merge -p '{"spec":{"enforcementAction":"deny"}}'
 ```
 
 ---
@@ -493,7 +629,9 @@ kubectl get k8srequiresignedimages require-signed-images -o yaml
 
 | Tool | Role |
 |---|---|
-| [GitHub Actions OIDC](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect) | Provides the identity token used for keyless signing -- no secrets needed |
+| [GitHub Actions OIDC](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect) | Provides the identity token used for keyless signing and for WIF-based GAR auth |
+| [GCP Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation) | Allows GitHub Actions to authenticate to GCP without storing service account keys |
+| [Google Artifact Registry](https://cloud.google.com/artifact-registry) | Container registry for signed images and attestations |
 | [Fulcio](https://docs.sigstore.dev/certificate_authority/overview/) | Sigstore CA -- issues short-lived signing certificates bound to the OIDC identity |
 | [Cosign](https://docs.sigstore.dev/cosign/overview/) | Signs image digests, attaches SBOM and provenance attestations as OCI artifacts |
 | [Rekor](https://docs.sigstore.dev/logging/overview/) | Public append-only transparency log -- stores signatures and certificates durably |
@@ -503,6 +641,7 @@ kubectl get k8srequiresignedimages require-signed-images -o yaml
 | [Kyverno](https://kyverno.io/docs/) | Kubernetes admission controller -- verifies signatures/attestations natively (Option A) |
 | [Gatekeeper](https://open-policy-agent.github.io/gatekeeper/website/docs/) | Kubernetes admission controller -- delegates verification to Ratify (Option B) |
 | [Ratify](https://ratify.dev/docs/quickstarts/quickstart-manifest-validation) | Performs the actual Cosign verification on Gatekeeper's behalf via external data provider |
+| [ArgoCD](https://argo-cd.readthedocs.io/) | GitOps deployment -- happy-path and negative-test Applications both live in `argocd/` |
 | [Dependabot](https://docs.github.com/en/code-security/dependabot) | Keeps GitHub Actions SHA pins up to date weekly |
 
 ---
@@ -512,8 +651,8 @@ kubectl get k8srequiresignedimages require-signed-images -o yaml
 - The verify workflow runs in the same pipeline as sign. A fully separated architecture would trigger verification in a deployment pipeline, not immediately after signing. This is tracked as future work.
 - Neither enforcement engine parses SBOM contents -- both confirm the SBOM was attached by the approved workflow, not that it contains specific packages.
 - VEX statements currently inform `.trivyignore` suppressions but are not yet a verified admission-time attestation. Wiring VEX in as a fourth Cosign attestation type is the natural next step.
-- Gatekeeper's status output reports `K8sNativeValidation engine is missing` for the `vap.k8s.io` enforcement point on clusters where that feature isn't enabled. This doesn't affect the webhook-based enforcement path used here, but it's a visible error state worth being aware of rather than ignoring.
-- **Fail-open is the Gatekeeper Helm chart default, and it is the wrong default for this project's threat model.** Out of the box, `validatingWebhookFailurePolicy` is `Ignore` -- if the admission webhook's call to Ratify doesn't return within the configured timeout (3 seconds by default), the request is admitted, not blocked. That silently defeats the entire point of enforcing signature verification whenever Ratify is slow, cold-starting, or briefly unreachable. This repo runs with `validatingWebhookFailurePolicy: Fail` and a 10-second timeout instead, which means a pod creation request is blocked, not allowed, if the verifier can't be reached in time. The tradeoff is real and worth stating plainly: with `Fail` set, a Ratify outage or Gatekeeper restart can temporarily block *all* pod creation cluster-wide, not just unsigned images, since the webhook cannot render any verdict at all. For a security control whose entire purpose is proving unsigned images can't slip through, fail-closed is the correct choice despite that availability cost -- but it is a genuine cost, and any team adopting this pattern should decide on it deliberately rather than inheriting the chart's default silently.
-- The pipeline targets Docker Hub. Migration to Amazon ECR with IRSA-based authentication is the recommended path for AWS production deployments.
-- Kyverno and Gatekeeper+Ratify are documented here as parallel options for comparison. Running both simultaneously against the same workloads in production is not recommended -- it adds operational complexity (two webhooks to reason about, two places enforcement can silently diverge) without additional security benefit over choosing one well-configured engine.
-- **Namespace exclusions are a full bypass, not a partial one.** Both `policy/kyverno/block-unsigned-images.yaml` and `policy/gatekeeper/constraint.yaml` exclude `kube-system`, `kyverno` (or `gatekeeper-system`), `argocd`, `crossplane-system`, and `cert-manager` from enforcement entirely -- these namespaces bootstrap the platform itself, so verifying them against a policy engine that lives inside one of them creates a circular dependency. The tradeoff is real: anything landing in `argocd`'s namespace specifically -- a compromised ArgoCD plugin, a misrouted Application manifest, or any workload an operator places there directly -- receives zero signature or attestation checking, by design, not by oversight. This is a standard and generally accepted pattern for platform-namespace exclusions, but "standard" doesn't mean "free" -- treat access to these excluded namespaces with the same care as cluster-admin, since that's effectively what it is from this pipeline's point of view.
+- Gatekeeper's status output reports `K8sNativeValidation engine is missing` for the `vap.k8s.io` enforcement point on clusters where that feature isn't enabled. This doesn't affect the webhook-based enforcement path used here, but it's a visible error state worth being aware of.
+- **Ratify has no native GCP Workload Identity auth provider.** AWS IRSA, Azure Managed Identity/Workload Identity, and Alibaba RRSA are all supported; GCP is not (as of Ratify v1.15.x). The `k8Secrets` authProvider is used instead with a long-lived JSON key -- see `docs/decisions/ratify-gcp-auth-tradeoff.md` for the full rationale. If upstream adds GCP WIF support, the static key should be removed and replaced with a KSA → GSA binding matching the Kyverno pattern.
+- **Fail-open is the Gatekeeper Helm chart default, and it is the wrong default for this project's threat model.** Out of the box, `validatingWebhookFailurePolicy` is `Ignore`. This repo runs with `validatingWebhookFailurePolicy: Fail` and a 10-second timeout instead. The tradeoff is real: with `Fail` set, a Ratify outage or Gatekeeper restart can temporarily block *all* pod creation cluster-wide. For a security control whose entire purpose is proving unsigned images can't slip through, fail-closed is the correct choice despite that availability cost -- but it is a genuine cost, and any team adopting this pattern should decide on it deliberately rather than inheriting the chart's default silently.
+- **Namespace exclusions are a full bypass, not a partial one.** Both `policy/kyverno/block-unsigned-images.yaml` and `policy/gatekeeper/constraint.yaml` exclude `kube-system`, `kyverno` (or `gatekeeper-system`), `argocd`, `crossplane-system`, and `cert-manager` from enforcement entirely. Treat access to these excluded namespaces with the same care as cluster-admin.
+- Kyverno and Gatekeeper+Ratify are documented here as parallel options for comparison. Running both simultaneously against the same workloads in production is not recommended -- it adds operational complexity without additional security benefit over choosing one well-configured engine.
