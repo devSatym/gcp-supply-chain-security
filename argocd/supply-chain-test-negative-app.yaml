@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: supply-chain-test-negative
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/musaumakau/supply-chain-security.git
+    targetRevision: main
+    path: policy/test-manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy: {}
+  # Deliberately NOT automated. Both manifests in this path are expected to
+  # be rejected by Kyverno -- automated sync would just retry a doomed
+  # operation on every poll interval forever. Trigger manually with:
+  #   kubectl patch application supply-chain-test-negative -n argocd \
+  #     --type merge -p '{"operation":{"sync":{"revision":"main"}}}'

@@ -4,14 +4,17 @@ metadata:
   name: test-mixed-containers
   namespace: default
 spec:
+  initContainers:
+    - name: unsigned-init-container
+      image: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/supply-chain-demo:unsigned-test
+      securityContext:
+        allowPrivilegeEscalation: false
+        runAsNonRoot: true
+        runAsUser: 10001
   containers:
     - name: signed-container
-      image: 5936/supply-chain-demo@sha256:1a4ebba1cec3bc49af1ff7260fa7566c4b09fe5ae834d518619ef0023ae91102
+      image: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/supply-chain-demo@sha256:cc52d2fbd3678cf16b0df5ff21a78a6d3c68d32778a1b5589182310e9a56e37a
       securityContext:
         allowPrivilegeEscalation: false
         runAsNonRoot: true
-    - name: unsigned-container
-      image: 5936/supply-chain-demo:unsigned-test
-      securityContext:
-        allowPrivilegeEscalation: false
-        runAsNonRoot: true
+        runAsUser: 10001

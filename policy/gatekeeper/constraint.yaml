@@ -11,7 +11,7 @@ metadata:
 spec:
   # Rollout stages: dryrun (observe only) -> warn (visible, non-blocking)
   # -> deny (blocking). Currently: dryrun.
-  enforcementAction: deny
+  enforcementAction: dryrun
   match:
     kinds:
       - apiGroups: [""]

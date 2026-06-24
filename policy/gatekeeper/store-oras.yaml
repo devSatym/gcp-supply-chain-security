@@ -6,3 +6,9 @@ spec:
   name: oras
   parameters:
     cosignEnabled: true
+    authProvider:
+      name: k8Secrets
+      serviceAccountName: ratify-admin
+      secrets:
+        - secretName: ratify-gar-regcred
+          namespace: gatekeeper-system

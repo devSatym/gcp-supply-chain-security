@@ -9,8 +9,7 @@ spec:
     trustPolicies:
       - name: default
         scopes:
-          - "5936/supply-chain-demo*"
-          - "docker.io/5936/supply-chain-demo*"
+          - "europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/*"
         keyless:
           certificateIdentity: "https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
           certificateOIDCIssuer: "https://token.actions.githubusercontent.com"
