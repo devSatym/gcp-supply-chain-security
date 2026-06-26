@@ -81,6 +81,9 @@ No private keys are stored anywhere in the CI pipeline. The signing identity is 
 ## Repository Structure
 
 ```
+## Repository Structure
+
+\```
 .
 ├── app/
 │   ├── main.py                  # FastAPI application (3 endpoints)
@@ -88,9 +91,10 @@ No private keys are stored anywhere in the CI pipeline. The signing identity is 
 ├── Dockerfile                   # Multi-stage, non-root, Bookworm-pinned
 ├── .trivyignore                 # Documented CVE suppressions with justification
 ├── .github/
-│   ├── dependabot.yml           # Weekly SHA-pin updates for Actions
+│   ├── CODEOWNERS               # Required reviewers for trust-chain-affecting paths
+│   ├── dependabot.yml           # Weekly SHA-pin updates for Actions, pip, and Docker
 │   ├── workflows/
-│   │   ├── pr-check.yml         # Triggered on pull_request -- scan only
+│   │   ├── pr-check.yml         # Triggered on pull_request -- scan + policy tests only
 │   │   ├── deploy.yml           # Triggered on push to main -- build + sign + verify
 │   │   ├── build-push.yml       # Reusable: build, push, Trivy image scan
 │   │   ├── sign-attest.yml      # Reusable: Cosign sign, Syft SBOM, SLSA provenance
@@ -110,25 +114,42 @@ No private keys are stored anywhere in the CI pipeline. The signing identity is 
 │   │   ├── constraint.yaml                # K8sRequireSignedImages, namespace scope
 │   │   ├── store-oras.yaml                # Ratify Store CRD (ORAS, cosign-enabled, k8Secrets auth)
 │   │   └── verifier-cosign.yaml           # Ratify Verifier CRD (keyless trust policy)
-│   └── test-manifests/                    # Shared test Pods, used by both engines
-│       ├── test-mixed-containers.yaml     # Test: signed main container + unsigned initContainer
-│       └── test-init-unsigned.yaml        # Test: unsigned initContainer only
+│   ├── test-manifests/                    # Shared test Pods, used by both engines
+│   │   ├── test-mixed-containers.yaml     # Test: signed main container + unsigned initContainer
+│   │   └── test-init-unsigned.yaml        # Test: unsigned initContainer only
+│   └── tests/                             # Policy unit tests, run in pr-check.yml
+│       ├── check-identity-consistency.sh  # Cross-file identity string consistency check
+│       ├── test_jmespath_conditions.py    # Kyverno Rule 3 JMESPath evaluation against real predicate
+│       └── fixtures/
+│           └── provenance-predicate.json  # Real captured SLSA provenance predicate for test fixtures
 ├── argocd/
 │   ├── supply-chain-demo-app.yaml         # Happy-path ArgoCD Application (automated sync)
 │   └── supply-chain-test-negative-app.yaml # Negative-test Application (manual sync only)
+├── k8s/
+│   └── helm/
+│       └── supply-chain-demo/             # Helm chart for the demo application
+├── terraform/
+│   └── main.tf                            # GitHub branch protection ruleset (GitHub provider)
 └── docs/
     ├── decisions/
     │   └── ratify-gcp-auth-tradeoff.md    # ADR: why Ratify uses a static JSON key for GAR auth
+    ├── runbooks/
+    │   └── troubleshooting-gatekeeper-kyverno.md  # Operational runbook: 13 real failure modes with fixes
     └── evidence/
         ├── deny-stage-violations.yaml     # Live Constraint status during deny-stage testing
-        ├── unsigned-rejected.txt          # Raw admission rejection, unsigned image
-        ├── tampered-rejected.txt          # Raw admission rejection, tampered signature
-        ├── mixed-containers-rejected.txt  # Raw admission rejection, mixed containers
-        ├── init-container-rejected.txt    # Raw admission rejection, unsigned init container
-        ├── excluded-namespace-allowed.txt # Proof excluded namespaces bypass enforcement
         ├── init-container-gap-fix.md      # Before/after: the initContainer bypass bug
-        └── troubleshooting-notes.md       # Every real bug hit standing up Gatekeeper+Ratify
-```
+        ├── unsigned-rejected.txt          # Gatekeeper: unsigned image blocked
+        ├── tampered-rejected.txt          # Gatekeeper: tampered signature blocked
+        ├── mixed-containers-rejected.txt  # Gatekeeper: mixed container pod blocked
+        ├── init-container-rejected.txt    # Gatekeeper: unsigned initContainer blocked
+        ├── excluded-namespace-allowed.txt # Proof excluded namespaces bypass enforcement
+        ├── kyverno-signed-admitted.txt    # Kyverno: correctly signed image admitted
+        ├── kyverno-unsigned-rejected.txt  # Kyverno: unsigned image blocked
+        ├── kyverno-tampered-rejected.txt  # Kyverno: tampered signature blocked
+        ├── kyverno-mixed-containers-rejected.txt  # Kyverno: mixed container pod blocked
+        └── kyverno-init-container-rejected.txt    # Kyverno: unsigned initContainer blocked
+\```
+
 
 ---
 
