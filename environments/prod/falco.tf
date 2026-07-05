@@ -34,9 +34,9 @@ module "falco" {
         cmdline=%proc.cmdline)
       priority: CRITICAL
       tags: [supply-chain, shell]
-      - macro: user_known_contact_k8s_api_server_activities
-        condition: >
-          (k8s.ns.name = "external-dns" and proc.name = "external-dns") or
-          (k8s.ns.name = "gatekeeper-system" and proc.name = "manager")
+    - macro: user_known_contact_k8s_api_server_activities
+      condition: >
+        (k8s.ns.name = "external-dns" and proc.name = "external-dns") or
+        (k8s.ns.name = "gatekeeper-system" and proc.name = "manager")
   EOT
 }
