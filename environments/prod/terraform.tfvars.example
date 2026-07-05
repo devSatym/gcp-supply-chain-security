@@ -32,4 +32,4 @@ node_pools = {
 
 dns_domain_filter = ""
 
-discord_webhook_url = "https://discord.com/api/webhooks/1528462987868897480/0912HreJ8ZBaMy9f4_cTaETP6mAP9pB_ICMa6itA8YwbY-QH_1PcUCw67NAFOER-WoQn"
+discord_webhook_url = "https://discord.com/api/webhooks/REPLACE_ME"
