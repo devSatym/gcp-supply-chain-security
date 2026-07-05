@@ -1,0 +1,35 @@
+project_id = "stoked-citizen-455416-g4"
+region     = "europe-west1"
+name       = "core"
+
+owner         = "musaujuan"
+project_label = "core-infrastructure"
+cost_center   = "personal"
+
+cluster_name    = "prod-cluster"
+cluster_version = "latest"
+release_channel = "REGULAR"
+
+# europe-west1 zones in use are b/c/d (no "a" zone here, unlike most regions).
+node_locations = ["europe-west1-b", "europe-west1-c"]
+
+private_subnets = {
+  main = {
+    cidr_block          = "10.0.0.0/20"
+    pods_cidr_block     = "10.4.0.0/14"
+    services_cidr_block = "10.8.0.0/20"
+  }
+}
+
+node_pools = {
+  main = {
+    machine_type = "e2-standard-4"
+    min_size     = 1
+    max_size     = 5
+    desired_size = 2
+  }
+}
+
+dns_domain_filter = ""
+
+discord_webhook_url = "https://discord.com/api/webhooks/1528462987868897480/0912HreJ8ZBaMy9f4_cTaETP6mAP9pB_ICMa6itA8YwbY-QH_1PcUCw67NAFOER-WoQn"
