@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/supply-chain-demo
-  digest: sha256:116776c8ca1518c1ec08245ff241cf41b9f379854d747312da59eefe427698a9
+  digest: sha256:225cef323919b01a401f474626fbe1e288876dc1cc069373d67b654ed9f23184
   pullPolicy: IfNotPresent
 
 service:

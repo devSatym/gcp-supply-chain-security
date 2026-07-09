@@ -28,7 +28,7 @@ spec:
           # signed and attested by sign-attest.yml. A tag can be repointed
           # later; a digest cannot, which is the whole point of testing
           # Kyverno's verifyImages against it.
-          image: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/supply-chain-demo@shasha256:116776c8ca1518c1ec08245ff241cf41b9f379854d747312da59eefe427698a9
+          image: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/supply-chain-demo@shasha256:225cef323919b01a401f474626fbe1e288876dc1cc069373d67b654ed9f23184
           imagePullPolicy: IfNotPresent
 
           securityContext:
