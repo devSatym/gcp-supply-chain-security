@@ -3,7 +3,7 @@
 # Install dependencies into a virtual environment so only the
 # venv directory needs to be copied into the final image.
 # ----------------------------------------------------------------
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 WORKDIR /build
 
@@ -28,7 +28,7 @@ RUN python -m venv /opt/venv \
 # Runtime image containing only the virtual environment,
 # application code, and a non-root user.
 # ----------------------------------------------------------------
-FROM python:3.12-slim-bookworm AS final
+FROM python:3.14-slim-bookworm AS final
 
 # Build-time args injected by GitHub Actions
 ARG GIT_SHA=unknown
