@@ -55,12 +55,20 @@
       "labels": ["dependencies", "python", "major", "renovate"]
     },
     {
-      "description": "Dockerfile base image updates",
+      "description": "Dockerfile base image updates — patch only, no major/minor bumps",
       "matchManagers": ["dockerfile"],
       "groupName": "docker-base-images",
       "automerge": false,
       "minimumReleaseAge": "7 days",
       "labels": ["dependencies", "docker", "renovate"]
+    },
+    {
+      "description": "Ignore Python major/minor Docker tag bumps — only take patch updates",
+      "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["python"],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false,
+      "minimumReleaseAge": false
     },
     {
       "description": "Terraform GCP provider updates",
