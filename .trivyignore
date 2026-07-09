@@ -70,3 +70,19 @@ CVE-2025-7458
 # util-linux dependency inherited from the base image -- code path
 # unreachable.
 CVE-2026-53615
+
+# CVE-2026-13221: Perl regex engine produces silently incorrect results for
+# certain patterns in versions through 5.43.9. App (app/main.py) is a
+# FastAPI/uvicorn HTTP service with no Perl invocation of any kind -- perl-base
+# is a transitive Debian base image dependency only, code path unreachable.
+CVE-2026-13221
+
+# CVE-2026-57433: Storable (perl) signed integer overflow before version 3.41.
+# App contains no Perl invocation and does not use Storable serialization --
+# inherited from perl-base in base image only, code path unreachable.
+CVE-2026-57433
+
+# CVE-2026-57432: Perl integer overflow in S_measure_st() through 5.43.10.
+# Same package and same reasoning as CVE-2026-13221 -- no Perl invocation
+# anywhere in this app, inherited from base image only, code path unreachable.
+CVE-2026-57432
