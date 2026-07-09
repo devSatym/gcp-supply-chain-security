@@ -1,0 +1,120 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate config for musaumakau/supply-chain-security",
+  "extends": [
+    "config:recommended"
+  ],
+
+  "timezone": "Africa/Nairobi",
+  "schedule": ["after 9am and before 5pm on monday"],
+  "minimumReleaseAge": "7 days",
+
+  "labels": ["dependencies", "renovate"],
+  "assignees": ["musaumakau"],
+  "reviewers": ["musaumakau"],
+
+  "prHourlyLimit": 3,
+  "prConcurrentLimit": 5,
+  "rebaseWhen": "conflicted",
+
+  "packageRules": [
+    {
+      "description": "Group all GitHub Actions updates into a single PR",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "automerge": false,
+      "minimumReleaseAge": "7 days",
+      "labels": ["dependencies", "github-actions", "renovate"]
+    },
+    {
+      "description": "Pin GitHub Actions to SHA digests (supply chain security)",
+      "matchManagers": ["github-actions"],
+      "pinDigests": true
+    },
+    {
+      "description": "Auto-merge patch/digest updates for GitHub Actions",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch", "digest"],
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash"
+    },
+    {
+      "description": "Group Python dependency updates",
+      "matchManagers": ["pip_requirements"],
+      "groupName": "python-dependencies",
+      "automerge": false,
+      "minimumReleaseAge": "7 days",
+      "labels": ["dependencies", "python", "renovate"]
+    },
+    {
+      "description": "Python major version bumps — review manually",
+      "matchManagers": ["pip_requirements"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "python", "major", "renovate"]
+    },
+    {
+      "description": "Dockerfile base image updates",
+      "matchManagers": ["dockerfile"],
+      "groupName": "docker-base-images",
+      "automerge": false,
+      "minimumReleaseAge": "7 days",
+      "labels": ["dependencies", "docker", "renovate"]
+    },
+    {
+      "description": "Terraform GCP provider updates",
+      "matchManagers": ["terraform"],
+      "matchDepTypes": ["provider"],
+      "matchPackageNames": ["hashicorp/google", "hashicorp/google-beta"],
+      "groupName": "terraform-gcp-provider",
+      "automerge": false,
+      "minimumReleaseAge": "7 days",
+      "labels": ["dependencies", "terraform", "renovate"]
+    },
+    {
+      "description": "Terraform major provider bumps — review manually",
+      "matchManagers": ["terraform"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "terraform", "major", "renovate"]
+    },
+    {
+      "description": "Helm chart updates in Chart.yaml",
+      "matchManagers": ["helm-values", "helmv3"],
+      "groupName": "helm-charts",
+      "automerge": false,
+      "minimumReleaseAge": "7 days",
+      "labels": ["dependencies", "helm", "renovate"]
+    }
+  ],
+
+  "terraform": {
+    "enabled": true
+  },
+
+  "github-actions": {
+    "enabled": true,
+    "fileMatch": ["^\\.github/workflows/[^/]+\\.ya?ml$"]
+  },
+
+  "dockerfile": {
+    "enabled": true
+  },
+
+  "pip_requirements": {
+    "enabled": true,
+    "fileMatch": ["(^|/)requirements\\.txt$"]
+  },
+
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security", "renovate"]
+  },
+
+  "ignorePaths": [
+    "**/terraform.tfstate",
+    "**/terraform.tfstate.backup",
+    "**/terraform.tfvars*"
+  ]
+}

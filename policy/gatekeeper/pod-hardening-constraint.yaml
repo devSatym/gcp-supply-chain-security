@@ -1,0 +1,17 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequirePodHardening
+metadata:
+  name: require-pod-hardening
+spec:
+  enforcementAction: dryrun  # start observe-only, same rollout pattern as require-signed-images
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+      - gatekeeper-system
+      - falco-system
+      - argocd
+      - cert-manager
+      - crossplane-system

@@ -15,17 +15,38 @@ spec:
     spec:
       names:
         kind: K8sRequireSignedImages
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            imageReferences:
+              type: array
+              items:
+                type: string
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
-       package k8srequiresignedimages
+        package k8srequiresignedimages
+
+        matches_scope(image) {
+          patterns := object.get(input.parameters, "imageReferences", [])
+          count(patterns) == 0
+        }
+
+        matches_scope(image) {
+          patterns := object.get(input.parameters, "imageReferences", [])
+          pattern := patterns[_]
+          prefix := trim_suffix(pattern, "*")
+          startswith(image, prefix)
+        }
 
         remote_data := response {
           containers := object.get(input.review.object.spec, "containers", [])
           init_containers := object.get(input.review.object.spec, "initContainers", [])
           ephemeral_containers := object.get(input.review.object.spec, "ephemeralContainers", [])
           all_containers := array.concat(array.concat(containers, init_containers), ephemeral_containers)
-          images := [c.image | c = all_containers[_]]
+          images := [c.image | c = all_containers[_]; matches_scope(c.image)]
+          count(images) > 0
           response := external_data({"provider": "ratify-provider", "keys": images})
         }
 

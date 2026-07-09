@@ -1,0 +1,45 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequirepodhardening
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequirePodHardening
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequirepodhardening
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container_seccomp_ok(container)
+          not pod_seccomp_ok(input.review.object.spec)
+          msg := sprintf("container '%v' must set seccompProfile.type to RuntimeDefault (pod-level or container-level)", [container.name])
+        }
+
+        container_seccomp_ok(container) {
+          container.securityContext.seccompProfile.type == "RuntimeDefault"
+        }
+
+        pod_seccomp_ok(spec) {
+          spec.securityContext.seccompProfile.type == "RuntimeDefault"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.readOnlyRootFilesystem == true
+          msg := sprintf("container '%v' must set readOnlyRootFilesystem: true", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not capabilities_dropped_all(container)
+          msg := sprintf("container '%v' must drop ALL capabilities", [container.name])
+        }
+
+        capabilities_dropped_all(container) {
+          drops := container.securityContext.capabilities.drop
+          drops[_] == "ALL"
+        }

@@ -26,3 +26,6 @@ spec:
       - cert-manager
       - kyverno
       - kubernetes-dashboard
+  parameters:
+    imageReferences:
+      - "europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/*"    
