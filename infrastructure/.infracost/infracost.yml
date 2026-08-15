@@ -1,0 +1,8 @@
+version: 0.1
+projects:
+  - path: vpc/
+    name: vpc-module
+  - path: gke/
+    name: gke-module
+  - path: kubernetes-addons/
+    name: k8s-addons-module
