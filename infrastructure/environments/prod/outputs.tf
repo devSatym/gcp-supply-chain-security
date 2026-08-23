@@ -23,6 +23,11 @@ output "artifact_registry_repository" {
   value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.supply_chain.repository_id}"
 }
 
+output "cosign_repository" {
+  description = "Docker repository used for mutable Cosign signature and attestation indexes."
+  value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.cosign_metadata.repository_id}"
+}
+
 output "github_workload_identity_provider" {
   description = "Full resource name for the GitHub Actions Workload Identity provider."
   value       = google_iam_workload_identity_pool_provider.github.name

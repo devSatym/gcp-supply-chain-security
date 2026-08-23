@@ -42,6 +42,24 @@ resource "google_artifact_registry_repository" "supply_chain" {
   depends_on = [google_project_service.required["artifactregistry.googleapis.com"]]
 }
 
+# Cosign v2 stores legacy signature and attestation indexes under shared tags
+# (for example, sha256-<digest>.att). A separate mutable metadata repository
+# lets it append the SPDX and SLSA attestations while application image tags
+# remain immutable in the supply_chain repository. Every artifact remains
+# cryptographically bound to the immutable image digest and trusted workflow.
+resource "google_artifact_registry_repository" "cosign_metadata" {
+  project       = var.project_id
+  location      = var.region
+  repository_id = var.cosign_repository_id
+  format        = "DOCKER"
+
+  docker_config {
+    immutable_tags = false
+  }
+
+  depends_on = [google_project_service.required["artifactregistry.googleapis.com"]]
+}
+
 resource "google_service_account" "github_actions" {
   account_id   = "supply-chain-ci"
   display_name = "Supply-chain GitHub Actions CI"
@@ -55,6 +73,14 @@ resource "google_artifact_registry_repository_iam_member" "github_actions_writer
   project    = var.project_id
   location   = google_artifact_registry_repository.supply_chain.location
   repository = google_artifact_registry_repository.supply_chain.repository_id
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+resource "google_artifact_registry_repository_iam_member" "github_actions_cosign_metadata_writer" {
+  project    = var.project_id
+  location   = google_artifact_registry_repository.cosign_metadata.location
+  repository = google_artifact_registry_repository.cosign_metadata.repository_id
   role       = "roles/artifactregistry.writer"
   member     = "serviceAccount:${google_service_account.github_actions.email}"
 }

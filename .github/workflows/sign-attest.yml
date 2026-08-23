@@ -14,6 +14,9 @@ on:
       gar_repository:
         required: true
         type: string
+      cosign_repository:
+        required: true
+        type: string
       workload_identity_provider:
         required: true
         type: string
@@ -25,6 +28,7 @@ env:
   GAR_LOCATION: ${{ inputs.gar_location }}
   GAR_PROJECT_ID: ${{ inputs.gar_project_id }}
   GAR_REPOSITORY: ${{ inputs.gar_repository }}
+  COSIGN_REPOSITORY: ${{ inputs.cosign_repository }}
   IMAGE_NAME: supply-chain-demo
 
 permissions:
@@ -52,7 +56,7 @@ jobs:
       - name: Setup Syft
         uses: ./.github/actions/setup-syft
 
-      # Sign the image (keyless via Sigstore OIDC)
+      # Sign the image keylessly via Sigstore OIDC.
       - name: Sign image (keyless)
         env:
           COSIGN_EXPERIMENTAL: "1"

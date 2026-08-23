@@ -60,6 +60,7 @@ jobs:
       gar_location: ${{ vars.GAR_LOCATION }}
       gar_project_id: ${{ vars.GAR_PROJECT_ID }}
       gar_repository: ${{ vars.GAR_REPOSITORY }}
+      cosign_repository: ${{ vars.COSIGN_REPOSITORY }}
       workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       service_account: ${{ vars.GCP_SA_EMAIL }}
   
@@ -73,5 +74,6 @@ jobs:
       gar_location: ${{ vars.GAR_LOCATION }}
       gar_project_id: ${{ vars.GAR_PROJECT_ID }}
       gar_repository: ${{ vars.GAR_REPOSITORY }}
+      cosign_repository: ${{ vars.COSIGN_REPOSITORY }}
       workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       service_account: ${{ vars.GCP_SA_EMAIL }}

@@ -155,6 +155,17 @@ variable "gar_repository_id" {
   }
 }
 
+variable "cosign_repository_id" {
+  description = "Mutable Artifact Registry Docker repository for Cosign's legacy signature and attestation indexes."
+  type        = string
+  default     = "supply-chain-security-attestations"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{0,62}$", var.cosign_repository_id))
+    error_message = "cosign_repository_id must be a valid Artifact Registry repository ID."
+  }
+}
+
 variable "github_repository" {
   description = "Canonical GitHub repository trusted by the CI Workload Identity provider."
   type        = string
