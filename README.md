@@ -11,7 +11,7 @@ This repository demonstrates a defense-in-depth container delivery path on GCP: 
 
 Argo CD reconciles digest-pinned desired state into GKE. Kyverno enforces the configured signature, SBOM, provenance, Rekor, and digest requirements at admission time; Falco provides a separate runtime-detection layer after a Pod has started. This is a DevSecOps and software-supply-chain-security project, not a platform-engineering implementation.
 
-> **Live evidence status:** the repository contains verified GitHub Actions, Artifact Registry, GKE, Argo CD, Kyverno, and Falco results. Four privacy-reviewed evidence captures are included below. Additional terminal/UI captures are intentionally not linked until personally identifying terminal paths and account metadata have been redacted.
+> **Live evidence status:** the repository contains verified GitHub Actions, Artifact Registry, GKE, Argo CD, Kyverno, and Falco results. Each live validation is placed beside the control it proves below. The Argo CD captures are redacted only where they contained personal account metadata; all screenshots were reviewed to exclude credentials, tokens, keys, and webhooks.
 
 ## Contents
 
@@ -274,6 +274,12 @@ The primary application repository has immutable tags. Cosign legacy signature a
 
 This capture shows a real Artifact Registry image version addressed by digest. The project-specific identifier is deliberately not repeated in the surrounding instructions; the important security property is the immutable digest relationship.
 
+### The running workload uses the reviewed digest
+
+![Live GKE deployment digest](docs/my-validation/03b-live-deployment-digest.png)
+
+The deployment query returns the same immutable digest recorded as the expected release artifact. This closes an important gap that a registry-only screenshot cannot: the workload actually running in GKE is identified by the reviewed digest, not merely by a convenient image tag.
+
 ### Cosign and Sigstore
 
 Cosign signs the exact registry digest with GitHub Actions keyless identity. The expected certificate subject is structurally:
@@ -283,6 +289,10 @@ https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/sign-att
 ~~~
 
 The verification contract also expects the GitHub Actions OIDC issuer and normal Rekor-backed transparency-log verification. No private Cosign key is stored in this repository or passed to the workflow.
+
+![Cosign keyless signature verification](docs/my-validation/04-cosign-verification.png)
+
+This live `cosign verify` result confirms the expected GitHub Actions workflow identity, OIDC issuer, exact digest, trusted certificate validation, and Rekor/transparency-log proof. It is evidence of a keyless signature verification, not evidence that a private signing key was stored in CI.
 
 ### SBOM and SLSA provenance
 
@@ -309,6 +319,20 @@ CI intentionally does not write back to Git. A verified image is promoted throug
 
 Argo CD reconciles Git state; it does not itself perform the cryptographic verification in this design. That enforcement belongs to Kyverno.
 
+### Live cluster health and GitOps reconciliation
+
+![GKE workload, Argo CD, Kyverno, Falco, and Falcosidekick health](docs/my-validation/06-gke-workloads.png)
+
+The live cluster evidence shows a Ready node, two available application replicas, and running Argo CD, Kyverno, Falco, and Falcosidekick components. This is supporting infrastructure evidence: it demonstrates that the security controls and the workload were running together in the same cluster.
+
+![Argo CD application healthy and synced](docs/my-validation/07-argocd-healthy.png)
+
+Argo CD reports the application as **Healthy** and **Synced**, with automated synchronization enabled and a resource tree that reaches the two running Pods. Personal account metadata in the status header has been redacted; the health, sync revision, and resource state remain unmodified.
+
+![Argo CD desired-state details](docs/my-validation/07-argocd-healthy-details.png)
+
+The Application details show the canonical Git repository, `main` target revision, Helm chart path, and digest-pinned image field. This is the GitOps handoff: Git provides desired state, Argo CD reconciles it, and Kyverno evaluates the Pod before it can run.
+
 ### Kyverno trust contract
 
 The active **block-unsigned-images** ClusterPolicy is in Enforce mode and contains three concrete rules:
@@ -325,6 +349,12 @@ Kyverno reads the application and Cosign metadata repositories through a distinc
 
 The negative-test Argo Application is deliberately not automated. It exists as a manual test target so rejected resources are not retried continuously.
 
+### Trusted workload admission evidence
+
+![Trusted signed workload admitted by Kyverno](docs/my-validation/08-trusted-admit.png)
+
+The rendered Helm release passed a **server-side** dry run through the Kubernetes API and Kyverno, then the live Deployment reached two available replicas. The final command also reads the image from the live Deployment, connecting admission success to the pinned trusted digest.
+
 ## Runtime Security
 
 | Time | Control | What it does | What it does not claim |
@@ -338,47 +368,71 @@ Falco is Terraform-managed as a DaemonSet using modern eBPF. A custom CRITICAL r
 
 Falcosidekick is deployed with the runtime stack. External Pub/Sub to Cloud Function to Discord alert routing is intentionally disabled in the public reference deployment because no real webhook is committed to the repository. When enabled, the design uses Falcosidekick Kubernetes ServiceAccount to GKE Workload Identity to a minimally scoped Pub/Sub publisher role; it does not require a JSON service-account key.
 
+![Falco detects a controlled runtime shell](docs/my-validation/12-falco-runtime.png)
+
+The controlled validation ran `kubectl exec ... /bin/sh -c id` in the admitted workload and queried a fresh Falco event. The output records **Critical**, the custom rule name, the target Pod and namespace, and the shell command. Kyverno permitted the trusted artifact at admission time; Falco then detected suspicious behavior after admission. This distinction is deliberate: Falco detects and reports—it does not claim to block the shell command.
+
 ## Security Tests: What Happens When Trust Breaks?
 
 | Scenario | Expected result | Actual result | Evidence |
 | --- | --- | --- | --- |
-| Trusted signed and attested digest | Admit | PASS | [Validation record](docs/my-validation/README.md#admission-results) |
-| Unsigned image in the protected registry scope | Deny | PASS | [Validation record](docs/my-validation/README.md#admission-results) |
-| Wrong signer identity expectation | Deny | PASS | [Validation record](docs/my-validation/README.md#admission-results) |
-| Wrong provenance source expectation | Deny | PASS | [Validation record](docs/my-validation/README.md#admission-results) |
-| Signed main container plus untrusted image path | Deny | PASS | [Validation record](docs/my-validation/README.md#admission-results) |
-| Unsigned initContainer | Deny | PASS | [Validation record](docs/my-validation/README.md#admission-results) |
-| Controlled runtime shell execution | Falco CRITICAL detection | PASS | [Validation record](docs/my-validation/README.md#runtime-result) |
+| Trusted signed and attested digest | Admit | PASS | [Server-side admission and live deployment](docs/my-validation/08-trusted-admit.png) |
+| Unsigned image in the protected registry scope | Deny | PASS | [Kyverno denial](docs/my-validation/09-unsigned-blocked.png) |
+| Wrong signer identity expectation | Deny | PASS | [Temporary wrong-trust policy](docs/my-validation/10-invalid-trust-blocked.png) |
+| Wrong provenance source expectation | Deny | PASS | [Temporary wrong-trust policy](docs/my-validation/10-invalid-trust-blocked.png) |
+| Signed main container plus untrusted image path | Deny | PASS | [Container-path bypass test](docs/my-validation/11-init-bypass-blocked.png) |
+| Unsigned initContainer | Deny | PASS | [initContainer bypass test](docs/my-validation/11-init-bypass-blocked.png) |
+| Controlled runtime shell execution | Falco CRITICAL detection | PASS | [Falco event](docs/my-validation/12-falco-runtime.png) |
 
 The wrong-trust test uses a temporary ClusterPolicy that intentionally expects an incorrect signer and source URI for a known signed image, then deletes that policy after the test. It proves the project checks the expected identity and provenance characteristics, not merely the existence of any signature.
 
 The mixed-container and unsigned-initContainer tests are important because verifying only a primary application container could leave an image-field bypass. The fixtures demonstrate that the relevant Pod image fields are covered by the configured policy.
 
+### Unsigned image: denied
+
+![Kyverno blocks an unsigned protected image](docs/my-validation/09-unsigned-blocked.png)
+
+The server-side request uses a real `unsigned-test` image from the protected registry scope. Kyverno denies the Pod because no signature exists and no matching provenance or SBOM attestations are available. This is a real admission decision, not a unit-test assertion.
+
+### Wrong trust contract: denied
+
+![Kyverno blocks a known signed image when identity and provenance expectations are wrong](docs/my-validation/10-invalid-trust-blocked.png)
+
+For this controlled negative test, a temporary ClusterPolicy deliberately expects the wrong keyless workflow subject and SLSA source URI. The known signed image is still denied, then the temporary policy is deleted. That proves the policy validates the expected signer and provenance contract instead of accepting any signature.
+
+### Container and initContainer bypass attempts: denied
+
+![Kyverno blocks mixed-container and unsigned initContainer bypass attempts](docs/my-validation/11-init-bypass-blocked.png)
+
+Two separate server-side requests were rejected: a Pod combining a trusted primary image with an untrusted image path, and a Pod with an unsigned initContainer. These tests demonstrate why policy coverage must extend beyond the visible application container.
+
 ## Live Validation Evidence
 
-The following matrix distinguishes published privacy-reviewed captures from the recorded live validation log. It does not treat historical upstream files under **docs/evidence** as personal deployment proof.
+The following matrix connects each published live capture to the control it proves. It does not treat historical upstream files under **docs/evidence** as personal deployment proof.
 
 | Control | Tool | Positive or negative test | Evidence |
 | --- | --- | --- | --- |
 | PR SAST | Semgrep | Positive PR gate | [PR security-gates capture](docs/my-validation/01-pr-security-gates.png) |
-| Filesystem and built-image scanning | Trivy | Positive PR and main gates | [PR security-gates capture](docs/my-validation/01-pr-security-gates.png) and [main pipeline capture](docs/my-validation/02-main-build-pipeline.png) |
-| Artifact digest | Artifact Registry | Digest-addressed image | [Registry capture](docs/my-validation/03-gar-image-digest.png) |
-| Keyless signing | Cosign | Positive main verification | [Main pipeline capture](docs/my-validation/02-main-build-pipeline.png) |
+| Filesystem and built-image scanning | Trivy | Positive PR and main gates | [PR gate](docs/my-validation/01-pr-security-gates.png) and [main pipeline](docs/my-validation/02-main-build-pipeline.png) |
+| Artifact digest in registry | Artifact Registry | Digest-addressed image | [Registry capture](docs/my-validation/03-gar-image-digest.png) |
+| Artifact digest in GKE | Kubernetes | Live Deployment uses reviewed digest | [Live deployment capture](docs/my-validation/03b-live-deployment-digest.png) |
+| Keyless signing | Cosign | Expected signer, issuer, certificate, and Rekor verification | [Cosign verification](docs/my-validation/04-cosign-verification.png) |
 | SPDX SBOM | Syft and Cosign | Positive attestation verification | [SBOM/provenance capture](docs/my-validation/05-sbom-provenance.png) |
 | SLSA provenance | Cosign | Positive provenance verification | [SBOM/provenance capture](docs/my-validation/05-sbom-provenance.png) |
-| GitOps reconciliation | Argo CD | Healthy and Synced | [Live validation record](docs/my-validation/README.md#cluster-and-gitops) |
-| Trusted admission | Kyverno | Positive server-side dry run and running workload | [Live validation record](docs/my-validation/README.md#admission-results) |
-| Unsigned protected image | Kyverno | Negative denial | [Live validation record](docs/my-validation/README.md#admission-results) |
-| Wrong identity or provenance | Kyverno | Negative denial | [Live validation record](docs/my-validation/README.md#admission-results) |
-| Container and initContainer paths | Kyverno | Negative bypass tests | [Live validation record](docs/my-validation/README.md#admission-results) |
-| Runtime shell | Falco | Controlled CRITICAL detection | [Live validation record](docs/my-validation/README.md#runtime-result) |
+| Cluster security components | GKE | App, Argo CD, Kyverno, Falco, and Falcosidekick running | [Cluster workload capture](docs/my-validation/06-gke-workloads.png) |
+| GitOps reconciliation | Argo CD | Healthy, Synced, canonical source, and chart path | [Application tree](docs/my-validation/07-argocd-healthy.png) and [details](docs/my-validation/07-argocd-healthy-details.png) |
+| Trusted admission | Kyverno | Positive server-side dry run and running workload | [Admission capture](docs/my-validation/08-trusted-admit.png) |
+| Unsigned protected image | Kyverno | Negative denial | [Unsigned-image denial](docs/my-validation/09-unsigned-blocked.png) |
+| Wrong identity or provenance | Kyverno | Negative denial | [Wrong-trust denial](docs/my-validation/10-invalid-trust-blocked.png) |
+| Container and initContainer paths | Kyverno | Negative bypass tests | [Bypass-test denial](docs/my-validation/11-init-bypass-blocked.png) |
+| Runtime shell | Falco | Controlled CRITICAL detection | [Falco event](docs/my-validation/12-falco-runtime.png) |
 
 ### Evidence interpretation
 
-- The safe PR capture comes from the open [PR #4](https://github.com/devSatym/gcp-supply-chain-security/pull/4), where all seven relevant checks passed. It is intentionally unmerged at the time of writing.
+- The PR capture comes from the open [PR #4](https://github.com/devSatym/gcp-supply-chain-security/pull/4), where all seven relevant checks passed. It is intentionally unmerged at the time of writing.
 - The trusted main run at [32638968765](https://github.com/devSatym/gcp-supply-chain-security/actions/runs/32638968765) completed Build and Push, final-image Trivy, keyless signing, SPDX/SLSA attestation, and strict Verify successfully.
 - The live deployment remains a deliberately manual GitOps promotion of a verified digest. A newer verified main artifact is not silently substituted into the chart.
-- Additional personal terminal captures exist but remain out of this public README until their local terminal username/path and account metadata are redacted.
+- All validation captures are incorporated into the story at the point where their control is discussed. The two Argo CD captures redact only personal author/account text; none of the committed evidence images contains a credential, token, private key, or webhook.
 
 ## Repository Structure
 
@@ -589,7 +643,7 @@ This is a live, security-focused reference workload rather than a customer-facin
 - no public ingress, custom domain, service mesh, multi-cluster deployment, full SIEM, or observability platform is claimed;
 - imported Gatekeeper/Ratify and other upstream reference files remain preserved but are not active controls.
 
-Useful follow-on improvements include baselining a version-pinned IaC/config scanner, enabling reviewed branch protection, adding privacy-redacted validation captures, adding a controlled external alert destination, and introducing multi-environment promotion only if the project scope expands.
+Useful follow-on improvements include baselining a version-pinned IaC/config scanner, enabling reviewed branch protection, adding further redacted validation captures as the project evolves, adding a controlled external alert destination, and introducing multi-environment promotion only if the project scope expands.
 
 The full current CI gap assessment is in [docs/codex/12-CI-GAP-MATRIX.md](docs/codex/12-CI-GAP-MATRIX.md).
 
