@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Renovate config for musaumakau/supply-chain-security",
+  "description": "Renovate config for devSatym/gcp-supply-chain-security",
   "extends": [
     "config:recommended"
   ],
@@ -10,8 +10,8 @@
   "minimumReleaseAge": "7 days",
 
   "labels": ["dependencies", "renovate"],
-  "assignees": ["musaumakau"],
-  "reviewers": ["musaumakau"],
+  "assignees": ["devSatym"],
+  "reviewers": ["devSatym"],
 
   "prHourlyLimit": 3,
   "prConcurrentLimit": 5,

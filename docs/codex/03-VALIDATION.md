@@ -3,7 +3,7 @@
 | ID | Test | Expected | Actual | Status | Evidence |
 | -- | ---- | -------- | ------ | ------ | -------- |
 | V00 | Monorepo history integrity | Canonical merge exists, has two parents, and both are ancestors of `HEAD` | `6717e449…` has parents `cc1fa07…` and `c88320f…`; both ancestry checks pass | PASS | `00-REPO-AUDIT.md`, `docs/repository-merge.md` |
-| V01 | Terraform fmt | All Terraform formatted | `terraform/main.tf` requires formatting | FAIL | Local `terraform fmt -check -recursive infrastructure terraform` |
+| V01 | Terraform fmt | All Terraform formatted | Root ruleset formatted; recursive check passes | PASS | Local `terraform fmt -check -recursive infrastructure terraform` |
 | V02 | Terraform validate | All deployable configurations valid | `infrastructure/vpc` passed; remaining modules deferred until configuration adaptation | PARTIAL | `00-REPO-AUDIT.md` |
 | V03 | Terraform plan | Explained plan | Not run | NOT RUN | — |
 | V04 | Terraform apply | Infrastructure provisioned | Not run | NOT RUN | — |
@@ -32,5 +32,6 @@
 | V27 | Application-side history reachable | Canonical application-side parent is an ancestor of `HEAD` | `cc1fa07…` is an ancestor | PASS | `00-REPO-AUDIT.md` |
 | V28 | Infrastructure-side history reachable | Canonical infrastructure-side parent is an ancestor of `HEAD` | `c88320f…` is an ancestor | PASS | `00-REPO-AUDIT.md` |
 | A01 | Helm chart rendering | Digest-pinned manifest renders | Passes; uses historical upstream digest | PASS (static only) | Local Helm render |
-| A02 | Policy identity-path consistency | All consumers use signing workflow path | Passed for current upstream identity | PASS (static only) | `policy/tests/check-identity-consistency.sh` |
-| A03 | Kyverno JMESPath conditions | Fixture matches policy conditions | Passed for current upstream fixture | PASS (static only) | `policy/tests/test_jmespath_conditions.py` |
+| A02 | Policy identity-path consistency | All consumers use signing workflow path | Passed; active Kyverno policy uses the canonical subject | PASS (static only) | `policy/tests/check-identity-consistency.sh` |
+| A03 | Kyverno JMESPath conditions | Fixture matches policy conditions | Passed for canonical repository fixture | PASS (static only) | `policy/tests/test_jmespath_conditions.py` |
+| A04 | Canonical repository identity | Active non-GCP runtime identities use `devSatym/gcp-supply-chain-security` | Argo repo URLs, Kyverno signer/provenance identity, fixture, OCI metadata, CODEOWNERS, Renovate, and ruleset Terraform updated; GAR values deliberately pending target-project confirmation | PASS (static only) | Git diff and local policy/YAML checks |

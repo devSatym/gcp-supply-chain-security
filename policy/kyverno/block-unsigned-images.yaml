@@ -45,7 +45,7 @@ spec:
           attestors:
             - entries:
                 - keyless:
-                    subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
+                    subject: "https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
@@ -86,7 +86,7 @@ spec:
               attestors:
                 - entries:
                     - keyless:
-                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
+                        subject: "https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
                         issuer: "https://token.actions.githubusercontent.com"
                         rekor:
                           url: https://rekor.sigstore.dev
@@ -128,7 +128,7 @@ spec:
               attestors:
                 - entries:
                     - keyless:
-                        subject: "https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
+                        subject: "https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main"
                         issuer: "https://token.actions.githubusercontent.com"
                         rekor:
                           url: https://rekor.sigstore.dev
@@ -149,7 +149,7 @@ spec:
                     # Verify the source repository URI -- prevents provenance from a fork
                     - key: "{{ invocation.configSource.uri }}"
                       operator: Equals
-                      value: "git+https://github.com/musaumakau/supply-chain-security@refs/heads/main"
+                      value: "git+https://github.com/devSatym/gcp-supply-chain-security@refs/heads/main"
           mutateDigest: false
           verifyDigest: true
           required: true

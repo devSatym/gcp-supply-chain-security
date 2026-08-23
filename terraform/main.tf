@@ -7,11 +7,23 @@ terraform {
   }
 }
 
+variable "github_owner" {
+  description = "GitHub owner that receives the main-branch ruleset."
+  type        = string
+  default     = "devSatym"
+}
+
+variable "github_repository" {
+  description = "Canonical monorepo name that receives the main-branch ruleset."
+  type        = string
+  default     = "gcp-supply-chain-security"
+}
+
 # Authenticates via GITHUB_TOKEN env var (a fine-grained PAT or GitHub App
 # token with 'Administration: write' on this repo). Do not hardcode a token
 # here or in any .tfvars file that gets committed.
 provider "github" {
-  owner = "musaumakau"
+  owner = var.github_owner
 }
 
 # Closes the "trust starts at main" gap identified in the supply-chain
@@ -20,7 +32,7 @@ provider "github" {
 # attested, and admitted to the cluster with zero additional review gate.
 resource "github_repository_ruleset" "main_protection" {
   name        = "main-branch-protection"
-  repository  = "supply-chain-security"
+  repository  = var.github_repository
   target      = "branch"
   enforcement = "active"
 
@@ -46,24 +58,24 @@ resource "github_repository_ruleset" "main_protection" {
     non_fast_forward = true
 
     required_status_checks {
-    # Require the canonical GitHub Actions job names as returned by the
-    # Rulesets API (short context, not the full "Workflow / Job (event)"
-    # path shown on the PR page -- that mismatch caused a stuck, silently
-    # unsatisfiable required check earlier). integration_id pins each check
-    # to the GitHub Actions app specifically, so a context-string collision
-    # from some other integration can't accidentally satisfy this rule.
+      # Require the canonical GitHub Actions job names as returned by the
+      # Rulesets API (short context, not the full "Workflow / Job (event)"
+      # path shown on the PR page -- that mismatch caused a stuck, silently
+      # unsatisfiable required check earlier). integration_id pins each check
+      # to the GitHub Actions app specifically, so a context-string collision
+      # from some other integration can't accidentally satisfy this rule.
       required_check {
-        context = "Policy Unit Tests"
-        integration_id = 15368    
-      }
-
-      required_check {
-        context = "Security Scan / SAST (Semgrep)"
+        context        = "Policy Unit Tests"
         integration_id = 15368
       }
 
       required_check {
-        context = "Security Scan / Vulnerability Scan (Trivy)"
+        context        = "Security Scan / SAST (Semgrep)"
+        integration_id = 15368
+      }
+
+      required_check {
+        context        = "Security Scan / Vulnerability Scan (Trivy)"
         integration_id = 15368
       }
 

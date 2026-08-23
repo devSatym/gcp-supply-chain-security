@@ -42,7 +42,7 @@ The source component boundary is preserved as a directory boundary. The nested `
 
 - `app/main.py` is a three-endpoint FastAPI demonstration (`/`, `/health`, `/info`). `/info` reports build metadata but its `signed: true` value is a claim, not a runtime cryptographic verification.
 - `Dockerfile` is a two-stage Python 3.12 Bookworm build, runs as UID/GID 10001, and has a health check. Its base image uses a mutable tag rather than a digest.
-- The OCI source label still names `musaumakau/supply-chain-security` and must be updated only as part of the approved monorepo identity change.
+- The OCI source label now uses `https://github.com/devSatym/gcp-supply-chain-security`; its base image remains tag-pinned rather than digest-pinned.
 
 ### Active root GitHub Actions
 
@@ -62,17 +62,17 @@ The CI trust graph is: PR check → main `deploy.yml` → build/push (SHA tag/di
 
 ### Policy, GitOps, manifests, and tests
 
-- `policy/kyverno/block-unsigned-images.yaml` is an Enforce `ClusterPolicy` with three rules: keyless signature, SPDX attestation, and SLSA provenance. It scopes enforcement to the upstream GAR repository, requires a digest, pins the upstream GitHub Actions subject/issuer, and tests provenance entrypoint, builder, and source URI. System/add-on namespaces are excluded.
-- `policy/tests/check-identity-consistency.sh` passed. It proves the old workflow *path* is consistently `sign-attest.yml`, not that the owner/repository is correct for this monorepo.
-- `policy/tests/test_jmespath_conditions.py` passed in an isolated temporary virtual environment against the captured upstream predicate. Its fixture deliberately contains the old upstream repository identity and must be updated together with the policy when the final identity is authorized.
+- `policy/kyverno/block-unsigned-images.yaml` is an Enforce `ClusterPolicy` with three rules: keyless signature, SPDX attestation, and SLSA provenance. It currently scopes enforcement to the old GAR repository but now pins the canonical GitHub Actions subject and source URI; its GAR scope changes only after the GCP project is confirmed. It requires a digest and excludes system/add-on namespaces.
+- `policy/tests/check-identity-consistency.sh` passed. It proves every checked signer consumer uses the `sign-attest.yml` workflow path; the active Kyverno subjects use the canonical repository identity.
+- `policy/tests/test_jmespath_conditions.py` passed in an isolated temporary virtual environment against the canonical repository fixture.
 - `policy/gatekeeper/` and Ratify files are retained comparison material. They reference the old GAR path and include a static-key mechanism. They are out of final deployment scope; no deletion is needed.
-- Both Argo CD Applications point to `https://github.com/musaumakau/supply-chain-security.git`. The happy-path Application is automated with prune/self-heal; the negative test is deliberately manual.
-- The Helm chart correctly renders a digest-pinned image but that image belongs to the old GAR project and is not personal validation. The direct manifest `k8s/manifests/deployment.yaml` has an invalid `@shasha256:` image reference.
+- Both Argo CD Applications now point to `https://github.com/devSatym/gcp-supply-chain-security.git`. The happy-path Application is automated with prune/self-heal; the negative test is deliberately manual.
+- The Helm chart correctly renders a digest-pinned image but that image belongs to the old GAR project and is not personal validation. The retained direct manifest's malformed digest syntax was corrected; it still references the old GAR image pending the selected GCP project and personal build.
 - Existing files under `docs/evidence/` are historical upstream evidence. They are not personal validation and must be retained but not presented as new evidence.
 
 ### Repository-identity findings
 
-Runtime configuration requiring adaptation includes workflow GAR IDs, Docker OCI source label, Kyverno trust subject and provenance URI, Argo CD `repoURL`, Helm image repository/digest, test fixture/manifests, root GitHub provider configuration, CODEOWNERS, and Renovate assignees/reviewers. Documentation, historical evidence, and merge attribution must be classified separately and not mass-replaced.
+The canonical repository identity has been adapted in the Docker OCI source label, Argo CD `repoURL`s, Kyverno subject/provenance URI, policy fixture, root GitHub provider configuration, CODEOWNERS, and Renovate assignees/reviewers. Remaining runtime adaptation is limited to the selected GCP project's GAR/WIF/IAM values, the resulting personal digest, and dependent negative-test manifests. Documentation, historical evidence, and retained Gatekeeper/Ratify configuration remain classified separately and are not mass-replaced.
 
 ## Infrastructure/runtime-security layer
 
@@ -107,7 +107,7 @@ Final intended design is GKE Workload Identity: bind the chart-created Falcoside
 | `helm template supply-chain-demo k8s/helm/supply-chain-demo` | Pass | Renders the old digest-pinned Helm image |
 | Identity consistency shell test | Pass | Upstream subject path consistent across policy/CI consumers |
 | Kyverno JMESPath fixture test | Pass | Tested against the upstream fixture in an isolated environment |
-| `terraform fmt -check -recursive infrastructure terraform` | Fail | Only `terraform/main.tf` needs formatting; it also still targets upstream GitHub owner/repository |
+| `terraform fmt -check -recursive infrastructure terraform` | Pass | Root GitHub ruleset Terraform was formatted and now parameterizes the canonical owner/repository |
 | `terraform init -backend=false` / validate for `infrastructure/vpc` | Pass | Configuration valid with Google provider 7.45.0 selected locally |
 | Remaining Terraform validates | Not completed | Deferred until the configuration is adapted for the selected GCP project; no cloud apply/plan ran |
 

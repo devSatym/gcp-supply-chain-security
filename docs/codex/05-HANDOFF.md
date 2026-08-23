@@ -2,7 +2,7 @@
 
 ## Where are we?
 
-Phase 0 audit and canonical-history validation are complete. The current merge baseline is valid; the audit/planning documentation commit is next.
+Phase 0 audit/canonical-history validation and the documentation commit are complete. Phase 1 canonical repository identity adaptation is complete; Phase 2 GCP target-project readiness is next.
 
 ## What works?
 
@@ -11,18 +11,19 @@ Phase 0 audit and canonical-history validation are complete. The current merge b
 - `origin` points to `https://github.com/devSatym/gcp-supply-chain-security.git`.
 - Helm rendering and current upstream policy-unit checks pass.
 - The Falco 9.1.0 dependency can use GKE Workload Identity for Pub/Sub; the static-key implementation is not the preferred final design.
+- Active non-GCP repository identity settings now use `devSatym/gcp-supply-chain-security`: Argo CD, Kyverno signer/provenance policy, OCI metadata, CODEOWNERS, Renovate, and GitHub ruleset Terraform.
 
 ## What is broken?
 
-History integrity is not broken. The previous blocker was caused by obsolete pre-rewrite SHA values in the master prompt and merge record; both were corrected without changing Git history. Implementation findings remain: stale runtime repository/GAR identities, no GAR/WIF Terraform resources, stale Falcosidekick static-key configuration, a malformed direct-manifest image reference, and an unformatted/upstream-targeted GitHub ruleset Terraform root.
+History integrity is not broken. The previous blocker was caused by obsolete pre-rewrite SHA values in the master prompt and merge record; both were corrected without changing Git history. Remaining implementation work is GCP-specific: GAR/WIF/API Terraform resources, Falcosidekick Workload Identity configuration, a personal GAR digest, and matching negative-test artifacts. Gatekeeper/Ratify remains preserved but excluded.
 
 ## Last successful action
 
-Canonical local-history verification: all required objects are commits, the merge has two parents, and both parent ancestry checks passed.
+Policy identity/JMESPath tests, YAML parsing, Helm rendering, and root Terraform formatting passed after canonical-identity adaptation.
 
 ## Exact next action
 
-Commit the documentation correction, then inspect the configured GCP project's billing, enabled APIs, quota, and cost readiness before making cloud changes.
+Inspect the configured GCP project's billing, enabled APIs, quota, and cost readiness before making cloud changes or replacing GAR configuration.
 
 ## Human action required
 

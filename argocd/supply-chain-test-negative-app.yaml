@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/musaumakau/supply-chain-security.git
+    repoURL: https://github.com/devSatym/gcp-supply-chain-security.git
     targetRevision: main
     path: policy/test-manifests
   destination:

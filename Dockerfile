@@ -39,7 +39,7 @@ ENV GIT_SHA=${GIT_SHA} \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-LABEL org.opencontainers.image.source="https://github.com/musaumakau/supply-chain-security"
+LABEL org.opencontainers.image.source="https://github.com/devSatym/gcp-supply-chain-security"
 LABEL org.opencontainers.image.description="Supply chain security demo -- FastAPI app signed via Cosign keyless"
 LABEL org.opencontainers.image.revision="${GIT_SHA}"
 
