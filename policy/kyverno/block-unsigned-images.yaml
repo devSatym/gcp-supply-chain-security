@@ -45,7 +45,7 @@ spec:
           # The application repository is immutable. Cosign's legacy
           # signature/attestation indexes live in this dedicated mutable
           # repository and remain cryptographically bound to the image digest.
-          repository: "europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security-attestations"
+          repository: "europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security-attestations/supply-chain-demo"
 
           attestors:
             - entries:
@@ -86,7 +86,7 @@ spec:
         - imageReferences:
             - "europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security/*"
 
-          repository: "europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security-attestations"
+          repository: "europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security-attestations/supply-chain-demo"
 
           attestations:
             - type: https://spdx.dev/Document
@@ -130,7 +130,7 @@ spec:
         - imageReferences:
             - "europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security/*"
 
-          repository: "europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security-attestations"
+          repository: "europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security-attestations/supply-chain-demo"
 
           attestations:
             - type: https://slsa.dev/provenance/v0.2

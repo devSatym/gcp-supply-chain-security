@@ -24,8 +24,8 @@ output "artifact_registry_repository" {
 }
 
 output "cosign_repository" {
-  description = "Docker repository used for mutable Cosign signature and attestation indexes."
-  value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.cosign_metadata.repository_id}"
+  description = "Image repository used for mutable Cosign signature and attestation indexes."
+  value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.cosign_metadata.repository_id}/supply-chain-demo"
 }
 
 output "github_workload_identity_provider" {
