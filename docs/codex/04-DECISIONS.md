@@ -1,31 +1,28 @@
 # Decisions
 
-## Confirmed during audit
-
 | Decision | Rationale | Status |
 | --- | --- | --- |
-| Keep one monorepo with infrastructure under `/infrastructure` | It preserves the two component boundaries without creating separate deployment repositories | Confirmed structurally and by the canonical two-parent merge |
-| Preserve historical upstream files | Gatekeeper/Ratify, examples, nested workflows, evidence, and documentation are provenance material | Confirmed |
-| Keep nested infrastructure workflow inactive | GitHub does not execute nested workflows and the retained one has old root paths and assumptions | Confirmed: preserved; root `infrastructure-terraform.yml` now validates active paths |
-| Deploy Kyverno only | The final scope names Kyverno as the actual admission engine; Gatekeeper/Ratify would introduce an unneeded static-key path | Confirmed target, not yet deployed |
-| Use digest-pinned workloads | A digest fixes the exact artifact admitted by Kyverno | Confirmed target; current digest is historical only |
-| Use GitHub OIDC → GCP WIF for CI | The existing design uses short-lived credentials; no CI JSON key exists in active workflows | Confirmed target, not yet validated on the final identity |
-| Use Cosign keyless signing | The pipeline uses GitHub OIDC/Sigstore and stores no signing key | Confirmed target, not yet validated personally |
-| Separate admission from runtime security | Kyverno controls admission; Falco observes behavior after execution | Confirmed |
-| Retain Falco | It is in scope for controlled runtime detection and alerting | Confirmed target |
-| Prefer Falcosidekick GKE Workload Identity | Falcosidekick's Pub/Sub client uses ADC with empty credentials; the embedded chart's deterministic KSA is patched declaratively with the GKE annotation and bound to a dedicated publisher GSA | Implemented locally, pending live validation |
-| Use Argo CD for GitOps | The intended deployment record is Git desired state, not a final direct `kubectl apply` | Confirmed target |
-| Exclude observability stack, custom domain/Ingress, and platform features | They do not strengthen the stated DevSecOps supply-chain story | Confirmed |
-
-## Pending decisions
-
-1. Accept or reject configured candidate project `valiant-house-502004-k2` (number `747109416512`), its `europe-west1` region, and a unique GCS state bucket/location.
-2. Confirm whether to use a Discord webhook for the alerting proof.
-3. Confirm the final personal GAR repository name if a collision exists.
+| Keep the current two-parent history | It is the canonical monorepo history; old prompt SHAs are obsolete | Confirmed; no repair/rewrite |
+| Keep one monorepo with `/infrastructure` | Preserves application and imported infrastructure boundaries | Confirmed |
+| Preserve historical upstream files/evidence | Attribution and audit context must remain distinguishable from runtime config | Confirmed |
+| Use Kyverno as the only admission engine | Gatekeeper/Ratify would add an unnecessary static-key compatibility path | Live |
+| Install Kyverno separately by Helm | Executable Kubernetes add-ons do not install admission engines | Live, chart 3.9.0 |
+| Use digest-pinned workloads | Admission verifies the exact immutable artifact | Live |
+| Use GitHub OIDC → GCP WIF | Short-lived credentials remove CI JSON keys | Live and verified |
+| Use a separate mutable Cosign metadata GAR repository | Cosign v2 legacy `.sig`/`.att` indexes append to tags; the primary image repository remains immutable | Live and verified |
+| Give Kyverno a repository-scoped reader GSA | Kyverno must read both primary images and metadata through GKE Workload Identity | Live and verified |
+| Prefer Falcosidekick GKE Workload Identity | Falcosidekick ADC works with empty credentials; no static key is needed | Code/live Falco path ready; alerting disabled |
+| Use Argo CD for application deployment | Git desired state is the deployment record | Live and healthy |
+| Keep runtime alerting opt-in | No Discord webhook was supplied; Terraform must not create a fake secret or function | Confirmed |
+| Keep node-pool sizes as total counts | Prevents unintended regional overprovisioning; autoscaler bounds are 1–2 nodes | Live |
+| Keep Gatekeeper/Ratify/cert-manager/ExternalDNS disabled | Outside final portfolio scope | Confirmed |
 
 ## History validation record
 
-- Previous blocker: the master prompt referenced obsolete pre-rewrite SHA values.
-- Resolution: current canonical monorepo topology independently verified (`6717e449…` with application-side parent `cc1fa07…` and infrastructure-side parent `c88320f…`).
-- History repair performed: **no**.
-- History rewrite performed during this implementation: **no**.
+- Previous blocker: master prompt referenced obsolete pre-rewrite SHA values.
+- Resolution: current canonical merge `6717e4491d3e8a2d0b6fd6044a673041f30d040c`
+  has application parent `cc1fa07a617320a8efdf31bb9aa67927128bd3a0`, infrastructure
+  parent `c88320f1b2ac1995aa1d75f481e1f69d7063c2ba`, and both are ancestors of
+  `HEAD`.
+- History repair performed: **NO**.
+- History rewrite performed during this implementation: **NO**.

@@ -2,26 +2,45 @@
 
 Last updated: 2026-08-23
 
-| Field | Status |
+| Field | Current status |
 | --- | --- |
-| Current phase | 2 — GCP target-project readiness |
-| Current status | **In progress** |
-| Completed | Structural/code audit, canonical-history validation, audit/planning commit, canonical repository identity changes in Argo CD/Kyverno/OCI metadata/repository automation/root ruleset Terraform, static Helm and policy checks, Falcosidekick chart capability audit |
-| In progress | Terraform/GitHub Actions adaptation and readiness validation for the candidate project |
-| Blocked | No history blocker. Cloud-changing work is pending explicit approval of the candidate project, state bucket/location, and billable resource creation. |
-| Next action | Obtain approval, create/select the dedicated state bucket, then review an explained Terraform plan |
-| Monorepo status | Directory composition and canonical two-parent merge confirmed |
-| Application/security layer | Canonical GitHub identity adapted; GAR workflows now use unset repository variables so they fail closed until final values are configured |
-| Infrastructure/runtime-security layer | Deploy root is `infrastructure/environments/prod`; local Terraform now declares APIs, immutable GAR, dedicated CI WIF/GSA, and Falcosidekick Workload Identity |
-| GitHub repository status | `origin` is `devSatym/gcp-supply-chain-security`; GitHub CLI is not installed, so variables/rulesets were not inspected remotely |
-| GCP project | Configured candidate `valiant-house-502004-k2` (number `747109416512`) is ACTIVE with billing enabled; candidate only, not yet accepted as deployment target |
-| Read-only GCP inventory | `europe-west1` has zero GAR repositories and zero GKE clusters. Two pre-existing state buckets exist outside that region; neither has been selected for this project. |
-| Existing federation | Existing `github-pool/github-provider` trusts `devSatym/gcp-platform-engineering`; Terraform declares a separate `supply-chain-github-pool` and does not modify the existing federation. |
-| Terraform status | Full prod root validates locally with backend disabled; no remote plan or apply run |
-| GKE / GAR / WIF | Declared locally, not created or remotely validated in this session |
-| Kyverno / Argo CD | Not validated or installed in this session |
-| Falco / runtime alert | Not validated or installed in this session |
-| Last successful command | `terraform -chdir=infrastructure/environments/prod init -backend=false -reconfigure -input=false && terraform validate -no-color` |
-| Next command | Approval-dependent backend bootstrap and `terraform plan` |
+| History integrity | **PASS** — canonical merge has two parents and both are ancestors of `HEAD` |
+| History repair/rewrite | **NO / NO** |
+| Repository | `devSatym/gcp-supply-chain-security` |
+| GCP target | `valiant-house-502004-k2` (`747109416512`), `europe-west1` |
+| Terraform state | `gs://valiant-house-502004-k2-gcp-supply-chain-tfstate/gcp-supply-chain-security/prod` |
+| GKE | `prod-cluster`, regional, live; autoscaling total 1–2 `e2-standard-4` nodes |
+| GAR | Immutable primary repository plus mutable Cosign metadata repository |
+| GitHub WIF | Dedicated pool/provider scoped to `devSatym/gcp-supply-chain-security` |
+| GitHub variables | GAR, WIF, CI service account, and `COSIGN_REPOSITORY` configured |
+| Kyverno | 1.19.0, policy Ready, `Enforce`, repository-scoped reader GSA via GKE WI |
+| Argo CD | 3.5.1, `supply-chain-demo` `Synced/Healthy` |
+| Application | 2/2 replicas healthy from signed digest `sha256:32a90d…f7d9fc563` |
+| Falco | 0.44.1 modern eBPF, one DaemonSet pod on the current autoscaled node |
+| Falcosidekick | 2 replicas healthy; Pub/Sub output disabled until webhook supplied |
+| Latest deploy run | `32630716371`, all jobs successful for `9bf574c` |
+| Final Terraform drift | PASS — `No changes` |
+| Working tree | Only user-owned untracked `plan.md`; no repository changes pending |
 
-No cloud resource, GitHub setting, remote repository, or secret was changed during this session.
+## Completed evidence
+
+- VPC/GKE foundation and GAR/WIF/IAM targeted Terraform applies succeeded.
+- Kyverno trusted-image server dry-run passed.
+- Real unsigned GAR image was denied with `no signatures found`.
+- Mixed-container and unsigned-init fixtures were denied, covering initContainers.
+- Test-only wrong signer identity and wrong provenance source policy denied the
+  known signed image with both expected mismatch messages.
+- Argo deployed the canonical Helm chart and reported `Synced/Healthy`.
+- `/health` and `/info` responded from the in-cluster service.
+- Falco loaded `custom-rules.yaml` and emitted a CRITICAL
+  `Shell Spawned In Signed Workload Pod` event for controlled `kubectl exec`.
+
+## Remaining work
+
+1. Capture screenshots/command transcripts into `docs/my-validation/`.
+2. Run PR-only Semgrep/Trivy checks on a real review branch before activating
+   the remote GitHub ruleset.
+3. If desired, provide a real Discord webhook and enable the guarded
+   Pub/Sub → Cloud Function path; do not invent a value.
+4. Decide when to delete the disposable unsigned GAR artifact and whether to
+   retain the live project for portfolio evidence.

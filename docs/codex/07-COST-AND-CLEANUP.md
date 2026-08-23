@@ -1,31 +1,30 @@
 # Cost and Cleanup
 
-## Cost review before apply
+## Current cost drivers
 
-The primary cost drivers are a regional GKE control plane, two `e2-standard-4` example nodes with 100 GB balanced disks, Cloud NAT, VPC flow logs, Artifact Registry storage/egress, Cloud Functions v2 builds/invocations, Pub/Sub messages, Secret Manager versions, and source-bucket storage. Managed Prometheus, ExternalDNS, and runtime alerting are disabled by default. Exact prices depend on the accepted region and current GCP pricing and must be reviewed immediately before apply.
+The live cost drivers are the regional GKE control plane, the autoscaled
+`e2-standard-4` node pool (currently one node, configured total range 1–2),
+balanced disks, Cloud NAT, VPC flow logs, GAR storage/egress, and cluster
+workload capacity. Managed Prometheus, ExternalDNS, and the Pub/Sub/Cloud
+Function/Discord route are disabled. Prices and quota should be reviewed in
+the GCP console before keeping the environment beyond the evidence window.
 
-No resource was created during the audit.
+## Cleanup order
 
-## Candidate-project readiness snapshot
+1. Preserve the final signed digest, CI logs, Argo/Kyverno/Falco transcripts,
+   and screenshots until the portfolio evidence is complete.
+2. Delete the disposable `unsigned-test` GAR version and any temporary test
+   pods/policies after evidence review. The test policy was already removed;
+   no negative test pod was admitted.
+3. Remove the committed negative-test Argo Application only if it was applied
+   later; it is not part of the current live Application.
+4. If the cluster is no longer needed, uninstall manually installed Argo CD and
+   Kyverno after removing the application and policy, then verify namespaces.
+5. Only with explicit approval, run the reviewed Terraform destroy for the
+   prod root. This removes GKE, network, GAR, IAM/WIF, and Falco resources.
+6. Decide separately whether to retain the state bucket and final GAR digest.
 
-Read-only inspection of configured candidate `valiant-house-502004-k2` on
-2026-08-23 found it ACTIVE with billing enabled and no GKE cluster or Artifact
-Registry repository in `europe-west1`. Regional quota is currently 32 general
-CPUs, 8 E2 CPUs, 2,048 GB disks, and 4 in-use addresses, all with zero usage.
-The approved two-node `e2-standard-4` pool consumes all eight E2 CPUs, leaving
-no E2 autoscaling headroom. The GKE module now treats configured node-pool
-sizes as totals and distributes initial nodes across the selected zones, rather
-than interpreting the approved two nodes as two nodes per zone. Do not increase
-the pool beyond two nodes without a quota/sizing review.
-
-## Post-validation cleanup order
-
-1. Keep the final trusted GAR digest and personal evidence until the user decides otherwise.
-2. Delete disposable unsigned/negative-test images and workloads only after evidence is recorded.
-3. Remove negative-test Argo Application resources if they were created.
-4. If uninstalling manually installed Helm releases, remove Argo CD and Kyverno only after applications/policies are no longer needed.
-5. Use Terraform to remove Terraform-managed infrastructure only after explicit user approval for `terraform destroy`.
-6. Verify that no static service-account keys were created. The retained Ratify compatibility path is disabled and is not part of cleanup for the final design.
-7. Decide separately whether to retain the GCS state bucket and GAR evidence artifact.
-
-Never run `terraform destroy` or delete final evidence artifacts without explicit user approval. Do not store Discord webhooks, JSON keys, state, kubeconfig, tokens, or temporary Cosign material in Git.
+Never commit or print a Discord webhook, JSON key, Terraform state, kubeconfig,
+PAT, or temporary Cosign credential. Verify that no service-account keys were
+created; the active CI, Kyverno, and intended Falcosidekick paths use Workload
+Identity.

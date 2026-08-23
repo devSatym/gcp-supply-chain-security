@@ -1,19 +1,27 @@
 # Resource Inventory
 
-No deployment resource has been created. The configured GCP project candidate is known, and the table records intended Terraform-managed resources; `Created?` means verified in this project, not merely declared in code.
+Verified live resources in project `valiant-house-502004-k2`, region
+`europe-west1`:
 
-| Resource | Name / region | Purpose | Created? | Cost relevance | Management / destroy mechanism |
-| --- | --- | --- | --- | --- | --- |
-| GCP project | Candidate `valiant-house-502004-k2` / number `747109416512` | Deployment boundary | No — candidate only | Billing boundary | User must accept before apply |
-| GCS state bucket | Existing candidates: `valiant-house-502004-k2-tf-state` (ASIA-SOUTH1) and `valiant-house-502004-k2-tfstate` (US-CENTRAL1); no selection made | Versioned Terraform state | No | Storage/operations | User chooses reuse versus a dedicated bucket/location; do not destroy casually |
-| VPC / subnets / router / NAT | Derived from `name` and `environment` | Private GKE networking and egress | No | NAT, logs, egress | Terraform root; `terraform destroy` only with approval |
-| GKE cluster / node pools | `prod-cluster` example / selected region | Kubernetes runtime | No | Control plane, nodes, disks, logs | Terraform root; destroy only with approval |
-| GAR repository | `supply-chain-security` in chosen region | Immutable image and attestations | No | Storage / egress | Declared in Terraform prod root |
-| CI service account / WIF pool/provider | `supply-chain-ci` / `supply-chain-github-pool` / `github-provider` | GitHub OIDC to GAR | No | No material direct cost | Declared in Terraform prod root; dedicated to canonical repo and separate from existing `github-pool` federation |
-| Kyverno / Argo CD | `kyverno` / `argocd` namespaces | Admission and GitOps | No | Cluster capacity | Helm, documented uninstall procedure |
-| Falco / Falcosidekick | `falco-system` | Runtime detection / Pub/Sub publication | No | Cluster capacity | Terraform Helm release |
-| Pub/Sub topic | `falco-alerts` default | Alert transport | No | Message volume | Terraform module |
-| Cloud Function v2 / source bucket | `falco-discord-notifier` / project-derived bucket | Discord notification | No | Invocations, build/storage | Terraform module |
-| Discord webhook secret | Secret Manager `falco-discord-webhook-url` | Notification destination | No | Secret versions | Terraform creates secret; value stays in ignored tfvars |
+| Resource | Name / identity | Purpose | Management |
+| --- | --- | --- | --- |
+| Terraform state | `gs://valiant-house-502004-k2-gcp-supply-chain-tfstate`, prefix `gcp-supply-chain-security/prod` | Versioned remote state | Terraform backend |
+| VPC/network | `core-prod-vpc`, private subnet/ranges, router/NAT/firewalls | Private GKE networking and egress | Terraform prod root |
+| GKE | `prod-cluster`, regional | Kubernetes runtime | Terraform prod root |
+| Node pool | `main`, `e2-standard-4`, autoscaling total 1–2 | Workload capacity | Terraform/GKE autoscaler |
+| Primary GAR | `supply-chain-security` | Immutable application image tags | Terraform/GitHub Actions |
+| Cosign GAR | `supply-chain-security-attestations` | Mutable legacy Cosign indexes | Terraform/GitHub Actions/Kyverno reader |
+| CI GSA | `supply-chain-ci@valiant-house-502004-k2.iam.gserviceaccount.com` | GitHub WIF image push/sign/verify | Terraform |
+| GitHub WIF | `supply-chain-github-pool/github-provider` | Canonical repository OIDC exchange | Terraform |
+| Kyverno GSA | `kyverno-verifier@valiant-house-502004-k2.iam.gserviceaccount.com` | Read-only GAR verification | Terraform + KSA annotation |
+| Kyverno | namespace `kyverno`, chart 3.9.0 / app 1.19.0 | Enforced signature/SBOM/provenance admission | Helm |
+| Argo CD | namespace `argocd`, chart 10.3.3 / app 3.5.1 | GitOps reconciliation | Helm + committed Application |
+| Application | namespace `default`, `supply-chain-demo` | Two-replica signed workload | Argo CD Helm chart |
+| Falco | namespace `falco-system`, chart 9.1.0 / app 0.44.1 | Runtime eBPF detection | Terraform Helm release |
+| Falcosidekick | two replicas in `falco-system`, app 2.32.0 | Alert routing component | Terraform Helm release |
+| Unsigned test image | GAR tag `unsigned-test`, digest `sha256:18549c45…12472ca17` | Disposable negative admission test | Delete after evidence review |
 
-The retained Ratify JSON-key compatibility code is guarded by `enable_legacy_ratify = false`; it is excluded from the intended final design. Falcosidekick no longer declares a JSON service-account key and uses GKE Workload Identity instead.
+Not created: Pub/Sub topic, Cloud Function, Secret Manager webhook secret, and
+Discord route. Those are conditional on `enable_runtime_alerting=true` and a
+real webhook URL. The retained Ratify JSON-key resources remain guarded by
+`enable_legacy_ratify=false` and were not created.
