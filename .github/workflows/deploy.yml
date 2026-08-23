@@ -8,6 +8,8 @@ on:
       - 'app/**'
       - 'Dockerfile'
       - '.dockerignore'
+      - '.github/workflows/**'
+      - '.github/actions/**'
   workflow_dispatch:
     inputs:
       confirm:

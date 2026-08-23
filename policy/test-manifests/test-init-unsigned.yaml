@@ -7,14 +7,14 @@ metadata:
 spec:
   initContainers:
     - name: unsigned-init
-      image: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/supply-chain-demo:unsigned-test
+      image: europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security/supply-chain-demo:unsigned-test
       command: ["sh", "-c", "echo init done"]
       securityContext:
         runAsNonRoot: true
         allowPrivilegeEscalation: false
   containers:
     - name: signed-main
-      image: europe-west1-docker.pkg.dev/stoked-citizen-455416-g4/supply-chain-security/supply-chain-demo@sha256:cc52d2fbd3678cf16b0df5ff21a78a6d3c68d32778a1b5589182310e9a56e37a
+      image: europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security/supply-chain-demo@sha256:32a90d832fdf76794fa5477e42e1fdcec28c9eb6e0deee48ad466d1f7d9fc563
       command: ["sh", "-c", "sleep 3600"]
       securityContext:
         runAsNonRoot: true
