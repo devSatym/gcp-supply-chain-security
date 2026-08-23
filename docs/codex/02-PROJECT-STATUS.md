@@ -15,6 +15,8 @@ Last updated: 2026-08-23
 | Infrastructure/runtime-security layer | Deploy root is `infrastructure/environments/prod`; local Terraform now declares APIs, immutable GAR, dedicated CI WIF/GSA, and Falcosidekick Workload Identity |
 | GitHub repository status | `origin` is `devSatym/gcp-supply-chain-security`; GitHub CLI is not installed, so variables/rulesets were not inspected remotely |
 | GCP project | Configured candidate `valiant-house-502004-k2` (number `747109416512`) is ACTIVE with billing enabled; candidate only, not yet accepted as deployment target |
+| Read-only GCP inventory | `europe-west1` has zero GAR repositories and zero GKE clusters. Two pre-existing state buckets exist outside that region; neither has been selected for this project. |
+| Existing federation | Existing `github-pool/github-provider` trusts `devSatym/gcp-platform-engineering`; Terraform declares a separate `supply-chain-github-pool` and does not modify the existing federation. |
 | Terraform status | Full prod root validates locally with backend disabled; no remote plan or apply run |
 | GKE / GAR / WIF | Declared locally, not created or remotely validated in this session |
 | Kyverno / Argo CD | Not validated or installed in this session |

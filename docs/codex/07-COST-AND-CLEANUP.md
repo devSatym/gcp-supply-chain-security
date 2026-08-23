@@ -6,6 +6,17 @@ The primary cost drivers are a regional GKE control plane, two `e2-standard-4` e
 
 No resource was created during the audit.
 
+## Candidate-project readiness snapshot
+
+Read-only inspection of configured candidate `valiant-house-502004-k2` on
+2026-08-23 found it ACTIVE with billing enabled and no GKE cluster or Artifact
+Registry repository in `europe-west1`. Regional quota is currently 32 general
+CPUs, 8 E2 CPUs, 2,048 GB disks, and 4 in-use addresses, all with zero usage.
+The example two-node `e2-standard-4` pool consumes all eight E2 CPUs, leaving
+no E2 autoscaling headroom. Do not create resources until the user accepts this
+project, chooses a state-bucket location, and accepts this capacity/cost tradeoff
+or asks for a sizing/quota change.
+
 ## Post-validation cleanup order
 
 1. Keep the final trusted GAR digest and personal evidence until the user decides otherwise.
