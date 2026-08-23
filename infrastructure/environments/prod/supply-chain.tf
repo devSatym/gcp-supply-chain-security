@@ -85,6 +85,41 @@ resource "google_artifact_registry_repository_iam_member" "github_actions_cosign
   member     = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
+# Kyverno verifies signatures and attestations at admission time. It needs
+# read-only access to both the immutable application repository and Cosign's
+# separate mutable metadata repository; its Kubernetes ServiceAccount
+# impersonates this GSA through GKE Workload Identity.
+resource "google_service_account" "kyverno_verifier" {
+  account_id   = "kyverno-verifier"
+  display_name = "Kyverno image verifier"
+  description  = "Read-only Artifact Registry identity for Kyverno admission verification."
+  project      = var.project_id
+
+  depends_on = [google_project_service.required["iam.googleapis.com"]]
+}
+
+resource "google_artifact_registry_repository_iam_member" "kyverno_verifier_application_reader" {
+  project    = var.project_id
+  location   = google_artifact_registry_repository.supply_chain.location
+  repository = google_artifact_registry_repository.supply_chain.repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.kyverno_verifier.email}"
+}
+
+resource "google_artifact_registry_repository_iam_member" "kyverno_verifier_cosign_metadata_reader" {
+  project    = var.project_id
+  location   = google_artifact_registry_repository.cosign_metadata.location
+  repository = google_artifact_registry_repository.cosign_metadata.repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.kyverno_verifier.email}"
+}
+
+resource "google_service_account_iam_member" "kyverno_admission_workload_identity" {
+  service_account_id = google_service_account.kyverno_verifier.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[kyverno/kyverno-admission-controller]"
+}
+
 resource "google_iam_workload_identity_pool" "github" {
   provider = google-beta
 

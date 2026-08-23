@@ -38,6 +38,11 @@ output "github_actions_service_account_email" {
   value       = google_service_account.github_actions.email
 }
 
+output "kyverno_verifier_service_account_email" {
+  description = "GSA impersonated by Kyverno's admission controller for Artifact Registry verification."
+  value       = google_service_account.kyverno_verifier.email
+}
+
 output "falco_alert_topic_id" {
   description = "Falco Pub/Sub topic ID, or null while runtime alerting is disabled."
   value       = try(module.falco_alerting[0].pubsub_topic_id, null)
