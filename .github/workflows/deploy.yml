@@ -39,6 +39,11 @@ jobs:
     with:
       image-tag: ${{ github.sha }}
       push: true
+      gar_location: ${{ vars.GAR_LOCATION }}
+      gar_project_id: ${{ vars.GAR_PROJECT_ID }}
+      gar_repository: ${{ vars.GAR_REPOSITORY }}
+      workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      service_account: ${{ vars.GCP_SA_EMAIL }}
 
 
   sbom-vex:
@@ -52,6 +57,11 @@ jobs:
     uses: ./.github/workflows/sign-attest.yml
     with:
       digest: ${{ needs.build-push.outputs.digest }}
+      gar_location: ${{ vars.GAR_LOCATION }}
+      gar_project_id: ${{ vars.GAR_PROJECT_ID }}
+      gar_repository: ${{ vars.GAR_REPOSITORY }}
+      workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      service_account: ${{ vars.GCP_SA_EMAIL }}
   
 
   verify:
@@ -60,3 +70,8 @@ jobs:
     uses: ./.github/workflows/verify.yml
     with:
       digest: ${{ needs.build-push.outputs.digest }}
+      gar_location: ${{ vars.GAR_LOCATION }}
+      gar_project_id: ${{ vars.GAR_PROJECT_ID }}
+      gar_repository: ${{ vars.GAR_REPOSITORY }}
+      workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      service_account: ${{ vars.GCP_SA_EMAIL }}

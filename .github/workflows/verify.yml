@@ -5,11 +5,26 @@ on:
       digest:
         required: true
         type: string
+      gar_location:
+        required: true
+        type: string
+      gar_project_id:
+        required: true
+        type: string
+      gar_repository:
+        required: true
+        type: string
+      workload_identity_provider:
+        required: true
+        type: string
+      service_account:
+        required: true
+        type: string
 
 env:
-  GAR_LOCATION: ${{ vars.GAR_LOCATION }}
-  GAR_PROJECT_ID: ${{ vars.GAR_PROJECT_ID }}
-  GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
+  GAR_LOCATION: ${{ inputs.gar_location }}
+  GAR_PROJECT_ID: ${{ inputs.gar_project_id }}
+  GAR_REPOSITORY: ${{ inputs.gar_repository }}
   IMAGE_NAME: supply-chain-demo
 
 permissions:
@@ -27,8 +42,8 @@ jobs:
       - name: Authenticate to GCP
         uses: ./.github/actions/gcp-auth
         with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SA_EMAIL }}
+          workload_identity_provider: ${{ inputs.workload_identity_provider }}
+          service_account: ${{ inputs.service_account }}
           registry: ${{ env.GAR_LOCATION }}-docker.pkg.dev
 
       - name: Setup Cosign
