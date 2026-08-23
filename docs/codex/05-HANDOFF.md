@@ -15,8 +15,7 @@ target is project `valiant-house-502004-k2` in `europe-west1`.
   separate Cosign metadata repository.
 - PR #2 (`ci: harden trusted supply-chain verification`) passed relevant
   change detection, Semgrep, Trivy filesystem scanning, policy tests, and a
-  local Trivy image scan. Its privileged production jobs were skipped by
-  design.
+  local Trivy image scan. It received no privileged production authority.
 - Main Deploy run `32638968765` for merge commit `27a94b0` passed
   Build and Push, immutable-digest Trivy scan, keyless signing, SPDX SBOM,
   SLSA provenance, and hardened Verify checks. Its verified output digest is

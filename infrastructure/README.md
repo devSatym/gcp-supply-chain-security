@@ -43,12 +43,3 @@ terraform apply
 Full details, including the two-pass-apply requirement on a brand-new
 cluster and real troubleshooting notes from standing this up, are in
 [`environments/prod/README.md`](environments/prod/README.md).
-
-## Historical upstream attribution and references
-
-- [`musaumakau/supply-chain-security`](https://github.com/musaumakau/supply-chain-security) — application/security-side source repository
-- [`musaumakau/gcp-infrastructure-modules`](https://github.com/musaumakau/gcp-infrastructure-modules) — infrastructure-side source repository
-
-These links are historical attribution, not the current runtime repository
-identity. The active deployment repository is
-`devSatym/gcp-supply-chain-security`.
