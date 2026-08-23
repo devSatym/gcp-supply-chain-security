@@ -233,10 +233,13 @@ Wait for these contexts to finish:
 - Security Scan / Vulnerability Scan (Trivy) — successful with no blocking
   high/critical filesystem findings.
 - Policy Unit Tests — successful.
+- PR Image Scan — successful with no blocking high/critical image findings.
 
-Record the PR URL, run URL, run ID, commit SHA, and conclusions in
-docs/codex/03-VALIDATION.md. Capture the PR page and each successful check for
-the first personal evidence image.
+The trusted Deploy workflow is not pull-request triggered. Build/push, SBOM,
+signing, and verification must therefore be absent from the PR rather than
+shown as skipped. Record the PR URL, run URL, run ID, commit SHA, and
+conclusions in docs/codex/03-VALIDATION.md. Capture the PR page and each
+successful check for the first personal evidence image.
 
 If the change is not useful to keep, close the PR after recording evidence and
 delete the temporary branch from GitHub and locally:
@@ -290,18 +293,19 @@ Capture the following files, matching the original plan:
 
 | File | Evidence to show |
 | --- | --- |
-| 01-pr-security-gates.png | PR page with Semgrep, Trivy, and policy checks passed |
+| 01-pr-security-gates.png | Relevant PR page with Detect relevant changes, Semgrep, Trivy, Policy Unit Tests, and PR Image Scan passed; no skipped jobs |
 | 02-main-build-pipeline.png | Successful build, image push, sign, attest, and verify jobs |
 | 03-gar-image-digest.png | Immutable GAR image digest and separate Cosign metadata repository |
+| 03b-live-deployment-digest.png | Helm/Argo/GKE evidence that the live workload uses the digest-pinned image |
 | 04-cosign-verification.png | Canonical signer, GitHub OIDC issuer, Rekor, and digest verification |
-| 05-sbom-provenance-verification.png | SPDX and SLSA predicate verification, builder, source, and entrypoint |
+| 05-sbom-provenance.png | SPDX and SLSA predicate verification, builder, source, and entrypoint |
 | 06-gke-workloads.png | Ready node, Kyverno, Argo CD, Falco, and application workloads |
 | 07-argocd-healthy.png | supply-chain-demo Synced/Healthy, canonical repo URL, and Helm path |
-| 08-trusted-image-admitted.png | Trusted digest server dry-run and running replicas |
-| 09-unsigned-image-blocked.png | Kyverno denial containing no signatures found |
-| 10-invalid-provenance-blocked.png | Wrong signer and wrong source URI denial |
-| 11-init-container-bypass-blocked.png | Signed main container plus unsigned init-container denial |
-| 12-falco-runtime-detection.png | CRITICAL custom Falco shell rule with timestamp |
+| 08-trusted-admit.png | Trusted digest server dry-run and running replicas |
+| 09-unsigned-blocked.png | Kyverno denial containing no signatures found |
+| 10-invalid-trust-blocked.png | Wrong signer and wrong source URI denial |
+| 11-init-bypass-blocked.png | Signed main container plus unsigned init-container denial |
+| 12-falco-runtime.png | CRITICAL custom Falco shell rule with timestamp |
 | 13-runtime-alert.png | Actual Discord notification, only if alerting is enabled and received |
 
 Command examples for evidence capture:
