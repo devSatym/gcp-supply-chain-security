@@ -3,8 +3,8 @@
 | ID | Test | Expected | Actual | Status | Evidence |
 | -- | ---- | -------- | ------ | ------ | -------- |
 | V00 | Monorepo history integrity | Canonical merge exists, has two parents, and both are ancestors of `HEAD` | `6717e449…` has parents `cc1fa07…` and `c88320f…`; both ancestry checks pass | PASS | `00-REPO-AUDIT.md`, `docs/repository-merge.md` |
-| V01 | Terraform fmt | All Terraform formatted | Root ruleset formatted; recursive check passes | PASS | Local `terraform fmt -check -recursive infrastructure terraform` |
-| V02 | Terraform validate | All deployable configurations valid | `infrastructure/vpc` passed; remaining modules deferred until configuration adaptation | PARTIAL | `00-REPO-AUDIT.md` |
+| V01 | Terraform fmt | All Terraform formatted | Recursive check passes after provider/Helm syntax adaptation | PASS | Local `terraform fmt -check -recursive infrastructure terraform` |
+| V02 | Terraform validate | All deployable configurations valid | Full `infrastructure/environments/prod` root and transitive modules validate with backend disabled | PASS | Local `terraform init -backend=false -reconfigure` and `terraform validate -no-color` |
 | V03 | Terraform plan | Explained plan | Not run | NOT RUN | — |
 | V04 | Terraform apply | Infrastructure provisioned | Not run | NOT RUN | — |
 | V05 | GKE nodes Ready | Nodes Ready | Not tested | NOT RUN | — |

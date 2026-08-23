@@ -1,10 +1,10 @@
-project_id = "stoked-citizen-455416-g4"
+project_id = "YOUR_GCP_PROJECT_ID"
 region     = "europe-west1"
 name       = "core"
 
-owner         = "musaujuan"
-project_label = "core-infrastructure"
-cost_center   = "personal"
+owner         = "YOUR_NAME_OR_TEAM"
+project_label = "gcp-supply-chain-security"
+cost_center   = "YOUR_COST_CENTER"
 
 cluster_name    = "prod-cluster"
 cluster_version = "latest"
@@ -32,4 +32,12 @@ node_pools = {
 
 dns_domain_filter = ""
 
-discord_webhook_url = "https://discord.com/api/webhooks/REPLACE_ME"
+# These features are opt-in because they add permissions and runtime cost.
+enable_external_dns       = false
+enable_managed_prometheus = false
+enable_runtime_alerting   = false
+
+# After you have a Discord incoming webhook, set both lines below in an
+# untracked terraform.tfvars file. Never commit the webhook URL.
+# enable_runtime_alerting = true
+# discord_webhook_url     = "https://discord.com/api/webhooks/REPLACE_ME"

@@ -4,26 +4,26 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = ">= 5.30.0"
+      version = ">= 5.30.0, < 8.0.0"
     }
     google-beta = {
       source  = "hashicorp/google-beta"
-      version = ">= 5.30.0"
+      version = ">= 5.30.0, < 8.0.0"
     }
     helm = {
-      source  = "hashicorp/helm"
-      version = ">= 2.13.0"
+      source = "hashicorp/helm"
+      # The provider's inline kubernetes {} configuration used below is v2-only.
+      version = ">= 2.13.0, < 3.0.0"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = ">= 2.30.0"
+      version = ">= 2.30.0, < 3.0.0"
     }
   }
 
-  backend "gcs" {
-    bucket = "juan-makau-state-bucket"
-    prefix = "gcp-infrastructure-modules/prod"
-  }
+  # Backend identity is deliberately supplied at `terraform init` time. The
+  # imported upstream bucket is not part of this canonical monorepo.
+  backend "gcs" {}
 }
 
 provider "google" {
@@ -51,7 +51,7 @@ provider "kubernetes" {
 }
 
 provider "helm" {
-  kubernetes = {
+  kubernetes {
     host                   = "https://${module.gke.cluster_endpoint}"
     token                  = data.google_client_config.default.access_token
     cluster_ca_certificate = base64decode(module.gke.cluster_ca_certificate)

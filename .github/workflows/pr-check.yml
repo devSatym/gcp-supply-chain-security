@@ -42,6 +42,7 @@ jobs:
               - '.github/actions/**'
               - 'policy/**'
               - 'terraform/**'
+              - 'infrastructure/**'
               - 'k8s/helm/**'
               - 'CODEOWNERS'
               - '.github/CODEOWNERS'

@@ -20,6 +20,8 @@ module "vpc" {
 
   enable_flow_logs = true
   enable_iap_ssh   = true
+
+  depends_on = [google_project_service.required]
 }
 
 module "gke" {
@@ -40,6 +42,7 @@ module "gke" {
   services_range_name  = module.vpc.private_subnet_services_range_names[var.primary_subnet_key]
 
   master_authorized_networks = var.master_authorized_networks
+  enable_managed_prometheus  = var.enable_managed_prometheus
 
   node_pools = var.node_pools
 
@@ -47,6 +50,8 @@ module "gke" {
   owner         = var.owner
   project_label = var.project_label
   cost_center   = var.cost_center
+
+  depends_on = [google_project_service.required]
 }
 
 module "kubernetes_addons" {
@@ -58,6 +63,7 @@ module "kubernetes_addons" {
   dns_domain_filter = var.dns_domain_filter
 
   enable_metrics_server = var.enable_metrics_server
+  enable_external_dns   = var.enable_external_dns
 
   environment   = var.environment
   owner         = var.owner

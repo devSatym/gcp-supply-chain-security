@@ -49,14 +49,9 @@ variable "alert_pubsub_topic_id" {
 }
 
 variable "falcosidekick_gsa_email" {
-  description = "Email of the GCP service account Falcosidekick uses to publish to Pub/Sub."
+  description = "Email of the GCP service account Falcosidekick uses through GKE Workload Identity to publish to Pub/Sub. Leave null when alerting is disabled."
   type        = string
-}
-
-variable "falcosidekick_gcp_credentials_b64" {
-  description = "Base64-encoded JSON key for the falcosidekick_gsa_email service account."
-  type        = string
-  sensitive   = true
+  default     = null
 }
 
 variable "custom_rules_yaml" {

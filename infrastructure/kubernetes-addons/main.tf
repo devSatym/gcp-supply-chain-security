@@ -41,16 +41,15 @@ resource "helm_release" "metrics_server" {
   namespace        = "kube-system"
   create_namespace = false
 
-  set = [
-    {
-      name  = "resources.requests.cpu"
-      value = "100m"
-    },
-    {
-      name  = "resources.requests.memory"
-      value = "200Mi"
-    },
-  ]
+  set {
+    name  = "resources.requests.cpu"
+    value = "100m"
+  }
+
+  set {
+    name  = "resources.requests.memory"
+    value = "200Mi"
+  }
 }
 
 # External DNS — Google Service Account + Workload Identity binding
@@ -108,32 +107,35 @@ resource "helm_release" "external_dns" {
   version    = var.external_dns_chart_version
   namespace  = kubernetes_namespace_v1.external_dns[0].metadata[0].name
 
-  set = [
-    {
-      name  = "provider"
-      value = "google"
-    },
-    {
-      name  = "google.project"
-      value = var.project_id
-    },
-    {
-      name  = "serviceAccount.create"
-      value = "false"
-    },
-    {
-      name  = "serviceAccount.name"
-      value = kubernetes_service_account_v1.external_dns[0].metadata[0].name
-    },
-    {
-      name  = "domainFilters[0]"
-      value = var.dns_domain_filter
-    },
-    {
-      name  = "policy"
-      value = var.external_dns_policy
-    },
-  ]
+  set {
+    name  = "provider"
+    value = "google"
+  }
+
+  set {
+    name  = "google.project"
+    value = var.project_id
+  }
+
+  set {
+    name  = "serviceAccount.create"
+    value = "false"
+  }
+
+  set {
+    name  = "serviceAccount.name"
+    value = kubernetes_service_account_v1.external_dns[0].metadata[0].name
+  }
+
+  set {
+    name  = "domainFilters[0]"
+    value = var.dns_domain_filter
+  }
+
+  set {
+    name  = "policy"
+    value = var.external_dns_policy
+  }
 
   depends_on = [kubernetes_service_account_v1.external_dns]
 }

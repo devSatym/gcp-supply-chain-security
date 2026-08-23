@@ -257,13 +257,12 @@ The chain from Pub/Sub onward runs independent of whether Falco itself is still 
 
 ### Noise reduction
 
-Falco's default ruleset fires `Contact K8S API Server From Container` on every `external-dns` Ingress check and every Gatekeeper audit loop reconciliation. Both are expected behavior, not threats. The default ruleset ships an empty override macro for exactly this case:
+If ExternalDNS is explicitly enabled, Falco's default ruleset fires `Contact K8S API Server From Container` for its expected API calls. The default ruleset ships an empty override macro for this narrow allowlist:
 
 ```yaml
 - macro: user_known_contact_k8s_api_server_activities
   condition: >
-    (k8s.ns.name = "external-dns" and proc.name = "external-dns") or
-    (k8s.ns.name = "gatekeeper-system" and proc.name = "manager")
+    (k8s.ns.name = "external-dns" and proc.name = "external-dns")
 ```
 
 Falco loads its default rules first, then any custom rules file. The later macro definition wins, replacing the default's `(never_true)` condition with an explicit allowlist scoped to both namespace and process name — not namespace alone. Allowlisting the whole `gatekeeper-system` namespace would silence a genuinely suspicious process if one ever appeared there.
@@ -282,7 +281,7 @@ Set permanently in Terraform. Without it, the custom shell-spawn rule loaded, sh
 
 ### Deployment
 
-Both the Falco module and the alerting path (Falcosidekick + Pub/Sub + Cloud Function) are Terraform, in `gcp-infrastructure-modules`. No manual `kubectl` steps required to stand it up from zero.
+Both the Falco module and the optional alerting path (Falcosidekick + Pub/Sub + Cloud Function) are Terraform under this monorepo's `infrastructure/` directory. No manual `kubectl` steps are required to stand them up from zero.
 
 **Helm timeout on fresh clusters:** GKE nodes can look schedulable and still flip briefly to `NotReady` while kubelet and the CNI finish settling. On a cold cluster rebuild, daemonset pods land on these nodes and get rescheduled, eating past Helm's default 300-second timeout before the daemonset stabilizes. Set `timeout = 600` on the `helm_release` resource. If a previous failed apply left a release record behind, clear it before retrying:
 
@@ -351,7 +350,7 @@ Verifies a Cosign attestation of type `slsaprovenance` exists and validates thre
 
 - `invocation.configSource.entryPoint` matches `.github/workflows/sign-attest.yml`
 - `builder.id` matches `https://github.com/actions/runner`
-- `invocation.configSource.uri` matches `git+https://github.com/musaumakau/supply-chain-security@refs/heads/main`
+- `invocation.configSource.uri` matches `git+https://github.com/devSatym/gcp-supply-chain-security@refs/heads/main`
 
 The third condition is the critical one — it prevents provenance generated from a fork or a different repository from being accepted.
 
@@ -557,18 +556,24 @@ Key config decisions:
 
 | Variable | Value |
 |---|---|
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<number>/locations/global/workloadIdentityPools/github-pool/providers/github-provider` |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<number>/locations/global/workloadIdentityPools/supply-chain-github-pool/providers/github-provider` |
 | `GCP_SA_EMAIL` | `supply-chain-ci@<project>.iam.gserviceaccount.com` |
+| `GAR_LOCATION` | The selected Artifact Registry region, for example `europe-west1` |
+| `GAR_PROJECT_ID` | The selected GCP project ID |
+| `GAR_REPOSITORY` | `supply-chain-security`, unless the project setup intentionally chooses another repository ID |
 
 ### GCP infrastructure
 
-Managed in `gcp-infrastructure-modules` via Terraform:
+Managed from this monorepo's `infrastructure/environments/prod` Terraform root:
 
-- Workload Identity Federation pool + provider scoped to `musaumakau/supply-chain-security`
+- Dedicated Workload Identity Federation pool + provider scoped to `devSatym/gcp-supply-chain-security`
 - `supply-chain-ci` GSA with `roles/artifactregistry.writer` (repo-scoped)
-- `kyverno-gar-reader` GSA with `roles/artifactregistry.reader` bound to Kyverno KSAs via Workload Identity
-- `ratify-gar-reader` GSA with `roles/artifactregistry.reader`, long-lived JSON key stored as `ratify-gar-regcred` in `gatekeeper-system`
-- Falco + Falcosidekick (Helm), Pub/Sub topic, Cloud Function (Discord alerting)
+- Immutable GAR repository, required APIs, VPC, and GKE
+- Falco + Falcosidekick (Helm), with an optional Pub/Sub → Cloud Function → Discord path authenticated through GKE Workload Identity
+
+Gatekeeper/Ratify is retained as imported compatibility material but is not part
+of the final deployment and is disabled by default. No static service-account
+key is used for CI or Falcosidekick.
 
 ---
 
@@ -599,13 +604,13 @@ DIGEST="sha256:<digest>"
 
 # Verify signature
 cosign verify \
-  --certificate-identity-regexp="https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main" \
+  --certificate-identity-regexp="https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   "${REGISTRY}@${DIGEST}"
 
 # Verify SBOM attestation
 cosign verify-attestation \
-  --certificate-identity-regexp="https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main" \
+  --certificate-identity-regexp="https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   --type spdxjson \
   "${REGISTRY}@${DIGEST}" \
@@ -613,7 +618,7 @@ cosign verify-attestation \
 
 # Verify provenance attestation
 cosign verify-attestation \
-  --certificate-identity-regexp="https://github.com/musaumakau/supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main" \
+  --certificate-identity-regexp="https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   --type slsaprovenance \
   "${REGISTRY}@${DIGEST}" \
@@ -650,11 +655,9 @@ cosign verify-attestation \
 - The verify workflow runs in the same pipeline as sign. A fully separated architecture would trigger verification in a deployment pipeline, not immediately after signing.
 - Neither enforcement engine parses SBOM contents — both confirm the SBOM was attached by the approved workflow, not that it contains specific packages.
 - VEX statements currently inform `.trivyignore` suppressions but are not yet a verified admission-time attestation.
-- **Ratify has no native GCP Workload Identity auth provider.** AWS IRSA, Azure Managed Identity, and Alibaba RRSA are all supported; GCP is not (as of Ratify v1.15.x). A long-lived JSON key is the current workaround.
-- **Fail-open is the Gatekeeper Helm chart default.** `validatingWebhookFailurePolicy` defaults to `Ignore`. This repo runs with `Fail`.
-- **Namespace exclusions are a full bypass.** Both Kyverno and Gatekeeper exclude system namespaces. Any workload running in an excluded namespace bypasses enforcement entirely.
-- Kyverno and Gatekeeper+Ratify are documented here as parallel options for comparison. Running both simultaneously against the same workloads in production is not recommended.
+- **Gatekeeper/Ratify is legacy comparison material only.** It is not installed in the final deployment because Kyverno is the sole admission controller; the retained Ratify static-key compatibility path is disabled.
+- **Namespace exclusions are a full bypass.** Kyverno excludes system namespaces; any workload running in an excluded namespace bypasses enforcement entirely.
 
 ---
 
-Both the Falco module and the GCP infrastructure this builds on are in `gcp-infrastructure-modules`. The admission-control pipeline is in this repo (`supply-chain-security`).
+Both the Falco module and the GCP infrastructure it builds on live in this monorepo's `infrastructure/` directory. The admission-control pipeline is in the same canonical repository.

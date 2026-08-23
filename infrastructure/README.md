@@ -1,9 +1,10 @@
-# gcp-infrastructure-modules
+# Infrastructure component
 
-Reusable Terraform modules for GCP infrastructure, mirroring the AWS blueprint
-in [`infrastructure-modules`](https://github.com/musaumakau/infrastructure-modules):
-modular, composable, no hardcoded environment values, each module independently
-usable and independently tested via its own `examples/complete`.
+This directory is the imported infrastructure component of the canonical
+`devSatym/gcp-supply-chain-security` monorepo. Its upstream sources are
+recorded in [`docs/repository-merge.md`](../docs/repository-merge.md). The
+modules remain reusable and composable; `environments/prod` supplies the
+deployment-specific wiring.
 
 `environments/prod` is the one place all of this actually gets deployed —
 see [`environments/prod/README.md`](environments/prod/README.md) for the real
@@ -15,28 +16,27 @@ apply workflow, provider bootstrapping gotchas, and troubleshooting notes.
 |---|---|
 | [`vpc`](vpc/) | Private, VPC-native network with Cloud NAT and secondary ranges for GKE pods/services |
 | [`gke`](gke/) | Private, regional GKE cluster — Workload Identity, per-node-pool least-privilege service accounts, shielded nodes, autoscaling node pools defined as a map |
-| [`kubernetes-addons`](kubernetes-addons/) | Cluster addons deployed via Terraform's `helm_release` — Kyverno, Gatekeeper, cert-manager, external-dns |
-| [`falco`](falco/) | eBPF runtime detection (Falco + Falcosidekick) layered on top of the admission-time enforcement in `kubernetes-addons` — detects what actually runs, not just what's allowed to |
+| [`kubernetes-addons`](kubernetes-addons/) | Optional metrics-server and ExternalDNS only. It does **not** install Kyverno, Gatekeeper, or cert-manager. |
+| [`falco`](falco/) | eBPF runtime detection (Falco + Falcosidekick) layered on top of separately installed Kyverno admission enforcement — detects what actually runs, not just what is allowed to |
 | [`falco-alerting`](falco-alerting/) | Event-driven alert delivery: Pub/Sub → Cloud Function → Discord, decoupled from cluster lifecycle |
 
 ## Design
 
 Infrastructure and CI/CD are treated as modular software systems, not one-off
 scripts: reusable modules, composite CI actions, policy-as-code enforcement,
-and now runtime detection on top of admission control. Prevention (Kyverno,
-Gatekeeper/Ratify — see [`supply-chain-security`](https://github.com/musaumakau/supply-chain-security))
-and detection (Falco) are treated as complementary layers, not either/or —
-admission control answers "what's allowed to run," Falco answers "what's
-actually happening once it's running."
+and runtime detection on top of admission control. Prevention (Kyverno) and
+detection (Falco) are complementary layers, not either/or — admission control
+answers "what is allowed to run," and Falco answers "what is actually
+happening once it is running."
 
 ## Getting started
 
 ```bash
 cd environments/prod
 cp terraform.tfvars.example terraform.tfvars
-# edit terraform.tfvars: project_id, discord_webhook_url, etc.
+# edit terraform.tfvars: project_id, labels, and optional runtime alerting
 terraform init -backend-config="bucket=YOUR-TF-STATE-BUCKET"
-terraform apply -target=module.vpc -target=module.gke   # first apply only
+terraform apply -target=google_project_service.required -target=module.vpc -target=module.gke
 terraform apply
 ```
 
@@ -44,8 +44,11 @@ Full details, including the two-pass-apply requirement on a brand-new
 cluster and real troubleshooting notes from standing this up, are in
 [`environments/prod/README.md`](environments/prod/README.md).
 
-## Related repos
+## Historical upstream attribution and references
 
-- [`infrastructure-modules`](https://github.com/musaumakau/infrastructure-modules) — the AWS equivalent of this repo
-- [`supply-chain-security`](https://github.com/musaumakau/supply-chain-security) — the full CI/CD signing/attestation pipeline and admission enforcement this repo's `kubernetes-addons` module deploys
-- [`kyverno-policy-pack`](https://github.com/musaumakau/kyverno-policy-pack) — the standalone, tested Kyverno policy set used by `kubernetes-addons`
+- [`musaumakau/supply-chain-security`](https://github.com/musaumakau/supply-chain-security) — application/security-side source repository
+- [`musaumakau/gcp-infrastructure-modules`](https://github.com/musaumakau/gcp-infrastructure-modules) — infrastructure-side source repository
+
+These links are historical attribution, not the current runtime repository
+identity. The active deployment repository is
+`devSatym/gcp-supply-chain-security`.

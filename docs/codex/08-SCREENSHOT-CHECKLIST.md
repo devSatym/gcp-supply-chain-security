@@ -1,6 +1,6 @@
 # Screenshot Checklist
 
-Create `docs/my-validation/` only after tests have actually run. Existing `docs/evidence/` files are historical and must not be relabelled as personal evidence.
+Create `docs/my-validation/` only after tests have actually run. Existing `docs/evidence/` files are historical and must not be relabelled as personal evidence. The active root infrastructure workflow validates Terraform, but its green check is not evidence of a cloud deployment.
 
 | File | Where / what must be visible | Why it matters | Hide |
 | --- | --- | --- | --- |

@@ -11,7 +11,7 @@ The repository is structurally a monorepo, its active remote is the intended per
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| Current branch / HEAD | `main` / `b90bcc75dae48231a04e2efcedc51eb70dfac89c` at verification | Local Git |
+| Current branch / HEAD | `main` / implementation commits descend additively from the validated topology | Local Git |
 | Working tree at audit start | Only untracked `plan.md` | `git status --short` |
 | Active remote | `origin` fetch/push: `https://github.com/devSatym/gcp-supply-chain-security.git` | `git remote -v` |
 | Canonical merge | **PASS** | `6717e4491d3e8a2d0b6fd6044a673041f30d040c` is a commit with exactly two parents |
@@ -48,12 +48,12 @@ The source component boundary is preserved as a directory boundary. The nested `
 
 | Workflow | Trigger / purpose | Audit result |
 | --- | --- | --- |
-| `pr-check.yml` | PRs to `main`; path detection, Semgrep, Trivy filesystem scan, policy tests | Active; checks application/security paths, not `infrastructure/**` |
+| `pr-check.yml` | PRs to `main`; path detection, Semgrep, Trivy filesystem scan, policy tests | Active; now treats `infrastructure/**` as security-relevant |
 | `security-scan.yml` | Reusable Semgrep and Trivy workflow | Semgrep uses a pinned container; SARIF upload is configured |
 | `deploy.yml` | Push to `main` for `app/**`, Dockerfile, `.dockerignore`; manual confirmation | Calls build, SBOM/VEX, sign/attest, and verification |
-| `build-push.yml` | Reusable GAR build/push and Trivy image scan | Has hardcoded upstream project `stoked-citizen-455416-g4` and GAR path |
+| `build-push.yml` | Reusable GAR build/push and Trivy image scan | Uses repository variables for GAR location/project/repository; it fails closed until the final variables are configured |
 | `sign-attest.yml` | Reusable keyless signature, SPDX SBOM, SLSA provenance | Generates provenance from `github.repository`; therefore it would produce the correct new URI after identity adaptation |
-| `verify.yml` | Reusable Cosign signature/SBOM/provenance verification | Uses the actual calling repository for certificate identity, but hardcodes the upstream GAR project |
+| `verify.yml` | Reusable Cosign signature/SBOM/provenance verification | Uses the actual calling repository for certificate identity and the same fail-closed GAR repository variables |
 | `sbom-vex.yml` | Reusable CycloneDX/depscan report | Non-blocking and independent of the SPDX attestation in `sign-attest.yml` |
 
 Root composites are `gcp-auth`, `setup-cosign`, `setup-syft`, and a retained `docker-login`. `gcp-auth` uses GitHub OIDC and `google-github-actions/auth`; it contains no service-account JSON key. `docker-login` is unused legacy Docker Hub functionality and should remain preserved, not activated.
@@ -74,26 +74,34 @@ The CI trust graph is: PR check → main `deploy.yml` → build/push (SHA tag/di
 
 The canonical repository identity has been adapted in the Docker OCI source label, Argo CD `repoURL`s, Kyverno subject/provenance URI, policy fixture, root GitHub provider configuration, CODEOWNERS, and Renovate assignees/reviewers. Remaining runtime adaptation is limited to the selected GCP project's GAR/WIF/IAM values, the resulting personal digest, and dependent negative-test manifests. Documentation, historical evidence, and retained Gatekeeper/Ratify configuration remain classified separately and are not mass-replaced.
 
+Classification before replacement:
+
+- **Runtime trust/config:** Argo CD, Kyverno subject/provenance, OCI metadata, GitHub ruleset, and CI now use the canonical repository (CI's GAR fields are explicit repository variables).
+- **GAR pending target project:** Helm values, active Kyverno image scope, retained direct manifest, and negative-test image references retain the old GAR path until a personal repository and digest exist; no project ID was guessed.
+- **Test fixtures:** `policy/test-manifests/` remains a historical test set until it is regenerated for the personal GAR scope.
+- **Evidence:** `docs/evidence/` remains intact and labelled historical; it is not personal validation.
+- **Historical attribution / legacy configuration:** `docs/repository-merge.md`, the marked attribution section of `infrastructure/README.md`, and disabled Gatekeeper/Ratify material preserve source provenance without representing active runtime identity.
+
 ## Infrastructure/runtime-security layer
 
-`infrastructure/environments/prod/` is the only deployable root module. It has a hardcoded GCS backend (`juan-makau-state-bucket`, prefix `gcp-infrastructure-modules/prod`), hardcoded former project defaults/examples, and an unconditional Falco/alerting/Ratify configuration. It needs an environment-specific backend and variables before any use in a new project.
+`infrastructure/environments/prod/` is the only deployable root module. It now accepts its GCS backend at `terraform init` time, has no former-project defaults, provisions the GAR/WIF/CI foundation, and makes runtime alerting and retained Ratify compatibility resources opt-in. It still requires an accepted project, state bucket, and a reviewed plan before any apply.
 
 | Component | Inputs / outputs | Resources and dependencies | Required in final scope? | Cost / audit notes |
 | --- | --- | --- | --- | --- |
 | `vpc` | Project, region, labels, private/public subnets; exports VPC/subnets/router/NAT IDs | VPC, subnets, flow logs, Cloud Router, Cloud NAT, firewalls; Google provider | Yes | Cloud NAT, logging, and network egress are material costs |
 | `gke` | VPC output, regional setting, node pools, release channel; exports endpoint/CA/WI pool/credentials command | Regional private GKE control plane, node SAs/IAM, autoscaled node pools; Google/Google Beta | Yes | Regional control plane, nodes, disks, logging, managed Prometheus are material costs |
-| `kubernetes-addons` | Cluster/provider connection, metrics and ExternalDNS switches | Optional metrics-server; ExternalDNS GSA, IAM, KSA, Helm release | No for this portfolio deployment | **Actual Terraform does not install Kyverno, Gatekeeper, or cert-manager.** ExternalDNS defaults to enabled and must be disabled in the final root configuration |
-| `falco` | Pub/Sub topic, credentials, chart version, custom rules; exports namespace/release status | Namespace and Falco Helm release | Yes | DaemonSet uses node resources; chart currently pinned to 9.1.0 |
-| `falco-alerting` | Project, region, Discord webhook; exports Pub/Sub topic/function/SA | Pub/Sub, Secret Manager secret/version, source bucket, Cloud Functions v2, function SA and IAM | Yes, after a webhook is supplied | Function/build storage, Pub/Sub, Secret Manager, and alert volume may incur cost |
-| `environments/prod` | Wires modules and static identities | Also creates Falcosidekick and Ratify JSON service-account keys | Needs adaptation | Does not create GAR, GitHub WIF pool/provider, CI service account, or required APIs |
+| `kubernetes-addons` | Cluster/provider connection, metrics and ExternalDNS switches | Optional metrics-server; ExternalDNS GSA, IAM, KSA, Helm release | No for this portfolio deployment | **Actual Terraform does not install Kyverno, Gatekeeper, or cert-manager.** Root explicitly disables ExternalDNS by default |
+| `falco` | Optional Pub/Sub topic/GSA, chart version, custom rules | Namespace, Falco Helm release, narrow ServiceAccount annotation patch | Yes | DaemonSet uses node resources; chart is pinned to 9.1.0 and receives no JSON key |
+| `falco-alerting` | Project, region, Discord webhook; exports Pub/Sub topic/function/SA | Pub/Sub, Secret Manager secret/version, source bucket, Cloud Functions v2, function SA and IAM | Opt-in after a webhook is supplied | Function/build storage, Pub/Sub, Secret Manager, and alert volume may incur cost |
+| `environments/prod` | Wires modules and supply-chain foundation | Required APIs, immutable GAR, dedicated CI GSA and repository-scoped GitHub WIF; Falcosidekick WI binding | Adapted; not applied | Backend and target project remain explicit human-approved inputs |
 
 The documented add-ons mismatch is confirmed: `infrastructure/README.md` says `kubernetes-addons` deploys Kyverno, Gatekeeper, cert-manager, and ExternalDNS, while executable Terraform deploys only optional metrics-server and optional ExternalDNS. Final decision: install Kyverno separately by Helm after GKE is healthy; do not deploy Gatekeeper/Ratify, cert-manager, or ExternalDNS.
 
 ### Falcosidekick authentication audit
 
-The checked chart is Falco `9.1.0`, whose dependency is Falcosidekick `0.12.*`. Its values declare `config.gcp.workloadIdentityServiceAccount`, the Kubernetes RBAC template annotates its deterministic service account with `iam.gke.io/gcp-service-account`, and Falcosidekick creates a Pub/Sub client with application-default credentials when `GCP_CREDENTIALS` is empty. The upstream module's claim that static JSON credentials are the only option is therefore stale.
+The checked chart is Falco `9.1.0`, whose embedded Falcosidekick dependency is `0.12.1`. That dependency's values do not offer a direct GKE annotation setting, but its deterministic ServiceAccount is `falco-falcosidekick` and Falcosidekick creates its Pub/Sub client with application-default credentials when `GCP_CREDENTIALS` is empty. The root now applies a narrow declarative annotation to that ServiceAccount and binds it to a dedicated GSA with GKE Workload Identity. The upstream static-key claim is therefore stale.
 
-Final intended design is GKE Workload Identity: bind the chart-created Falcosidekick KSA to a dedicated GSA with `roles/pubsub.publisher`, set `config.gcp.workloadIdentityServiceAccount`, and leave `credentials` empty. This must be validated in the deployed cluster before static-key Terraform is removed or a keyless claim is made. The existing Ratify static-key code remains preserved but excluded from deployment.
+Final intended design is GKE Workload Identity: bind `falco-system/falco-falcosidekick` to a dedicated GSA with `roles/pubsub.publisher`, annotate the KSA, and leave `credentials` empty. This must be validated in the deployed cluster before a live keyless claim is made. The Falcosidekick static-key resource has been removed; retained Ratify compatibility code remains disabled by default.
 
 ## Nested infrastructure workflow
 
@@ -107,18 +115,18 @@ Final intended design is GKE Workload Identity: bind the chart-created Falcoside
 | `helm template supply-chain-demo k8s/helm/supply-chain-demo` | Pass | Renders the old digest-pinned Helm image |
 | Identity consistency shell test | Pass | Upstream subject path consistent across policy/CI consumers |
 | Kyverno JMESPath fixture test | Pass | Tested against the upstream fixture in an isolated environment |
-| `terraform fmt -check -recursive infrastructure terraform` | Pass | Root GitHub ruleset Terraform was formatted and now parameterizes the canonical owner/repository |
-| `terraform init -backend=false` / validate for `infrastructure/vpc` | Pass | Configuration valid with Google provider 7.45.0 selected locally |
-| Remaining Terraform validates | Not completed | Deferred until the configuration is adapted for the selected GCP project; no cloud apply/plan ran |
+| `terraform fmt -check -recursive infrastructure terraform` | Pass | Root GitHub ruleset Terraform and adapted infrastructure are formatted |
+| `terraform init -backend=false` / validate for `infrastructure/environments/prod` | Pass | Full deploy root and transitive modules validate locally with Google 7.45.0, Helm 2.17.0, Kubernetes 2.38.0, and Archive 2.8.0 |
+| Terraform plan/apply | Not completed | Requires an accepted project, dedicated backend, and explicit cloud-creation approval |
 
 ## Documentation discrepancies to correct during implementation
 
-1. Root and infrastructure READMEs describe two repositories and simultaneous Kyverno plus Gatekeeper/Ratify deployment; final scope is one monorepo and Kyverno only.
+1. Root and infrastructure READMEs still contain some retained legacy explanatory material; active deployment instructions use the canonical monorepo and Kyverno-only scope.
 2. `infrastructure/README.md` incorrectly claims Kyverno, Gatekeeper, and cert-manager are provisioned by the add-ons module.
-3. Falcosidekick documentation incorrectly claims the pinned chart lacks GKE Workload Identity support.
-4. The deployable root does not provision GAR, CI WIF, or APIs despite root CI and policy requiring them.
+3. Falcosidekick documentation was corrected to describe the ServiceAccount annotation patch and ADC path.
+4. The deployable root now declares GAR, CI WIF, and required APIs; nothing has been applied.
 5. Existing evidence contains old images, identities, and paths; it must be labelled historical rather than personal.
 
 ## Next implementation action
 
-Proceed from the current canonical `main` history. First commit this audit and planning correction, then determine and confirm the actual GCP deployment project before adapting GAR, WIF, and infrastructure runtime configuration.
+Proceed additively from the current canonical `main` history. Review the pending Terraform changes, then request explicit approval of the candidate project, state bucket/location, and billable resource creation before running a plan or apply against GCP.

@@ -7,9 +7,9 @@ on:
         type: string
 
 env:
-  GAR_LOCATION: europe-west1
-  GAR_PROJECT_ID: stoked-citizen-455416-g4
-  GAR_REPOSITORY: supply-chain-security
+  GAR_LOCATION: ${{ vars.GAR_LOCATION }}
+  GAR_PROJECT_ID: ${{ vars.GAR_PROJECT_ID }}
+  GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
   IMAGE_NAME: supply-chain-demo
 
 permissions:

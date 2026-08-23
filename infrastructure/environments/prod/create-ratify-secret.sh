@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # create-ratify-secret.sh
 #
+# LEGACY COMPATIBILITY ONLY — the final deployment uses Kyverno and does not
+# create a Ratify key. This script may only be used after explicitly setting
+# enable_legacy_ratify=true for a controlled compatibility investigation.
+#
 # Creates the kubernetes.io/dockerconfigjson Secret that Ratify's k8Secrets
 # authProvider reads for GAR authentication.
 #
@@ -8,7 +12,7 @@
 # DO NOT commit this script's output or the key JSON to git.
 #
 # Prerequisites:
-#   - kubectl context set to gke_stoked-citizen-455416-g4_europe-west1_prod-cluster
+#   - kubectl context set to the explicitly selected GKE cluster
 #   - terraform output available in environments/prod/
 #   - gcloud impersonation active (terraform-ci SA) OR owner credentials
 #
@@ -22,6 +26,7 @@ NAMESPACE="gatekeeper-system"
 SECRET_NAME="ratify-gar-regcred"
 REGISTRY="europe-west1-docker.pkg.dev"
 TF_DIR="${TF_DIR:-.}"   # default to current dir; override via env if running from repo root
+PROJECT_ID="${PROJECT_ID:?Set PROJECT_ID to the selected GCP project ID}"
 
 echo "==> Pulling key from Terraform state (sensitive output)..."
 cd "${TF_DIR}"
@@ -38,7 +43,7 @@ kubectl create secret docker-registry "${SECRET_NAME}" \
   --docker-server="${REGISTRY}" \
   --docker-username="_json_key" \
   --docker-password="${KEY_JSON}" \
-  --docker-email="ratify-gar-reader@stoked-citizen-455416-g4.iam.gserviceaccount.com" \
+  --docker-email="ratify-gar-reader@${PROJECT_ID}.iam.gserviceaccount.com" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "==> Verifying Secret exists..."

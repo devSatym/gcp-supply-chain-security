@@ -1,18 +1,17 @@
 # environments/prod/falco.tf
 #
 # Falco DaemonSet + Falcosidekick against prod-cluster, publishing to
-# the Pub/Sub topic wired up in falco-alerting.tf.
+# the optional Pub/Sub topic wired up in falco-alerting.tf.
 
 module "falco" {
   source = "../../falco"
 
-  project_id                        = var.project_id
-  cluster_name                      = var.cluster_name
-  region                            = var.region
-  alert_pubsub_topic_id             = module.falco_alerting.pubsub_topic_id
-  falcosidekick_gsa_email           = google_service_account.falcosidekick.email
-  falco_helm_version                = "9.1.0"
-  falcosidekick_gcp_credentials_b64 = google_service_account_key.falcosidekick.private_key
+  project_id              = var.project_id
+  cluster_name            = var.cluster_name
+  region                  = var.region
+  alert_pubsub_topic_id   = var.enable_runtime_alerting ? module.falco_alerting[0].pubsub_topic_id : null
+  falcosidekick_gsa_email = var.enable_runtime_alerting ? google_service_account.falcosidekick[0].email : null
+  falco_helm_version      = "9.1.0"
 
   # Tuned against a cluster where every workload is signed (Cosign) and
   # scanned (Trivy/Semgrep) before admission - so behavior that would be
@@ -36,7 +35,11 @@ module "falco" {
       tags: [supply-chain, shell]
     - macro: user_known_contact_k8s_api_server_activities
       condition: >
-        (k8s.ns.name = "external-dns" and proc.name = "external-dns") or
-        (k8s.ns.name = "gatekeeper-system" and proc.name = "manager")
+        (k8s.ns.name = "external-dns" and proc.name = "external-dns")
   EOT
+
+  depends_on = [
+    module.gke,
+    google_service_account_iam_member.falcosidekick_workload_identity,
+  ]
 }

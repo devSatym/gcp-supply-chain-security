@@ -13,9 +13,11 @@ on:
         description: Digest of the built image
         value: ${{ jobs.build.outputs.digest }}
 env:
-  GAR_LOCATION: europe-west1
-  GAR_PROJECT_ID: stoked-citizen-455416-g4
-  GAR_REPOSITORY: supply-chain-security
+  # Configured as repository variables after the project-level Terraform apply.
+  # Unset values fail closed instead of pushing to the imported upstream GAR.
+  GAR_LOCATION: ${{ vars.GAR_LOCATION }}
+  GAR_PROJECT_ID: ${{ vars.GAR_PROJECT_ID }}
+  GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
   IMAGE_NAME: supply-chain-demo
 permissions:
   contents: read

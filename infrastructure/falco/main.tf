@@ -2,12 +2,9 @@
 #
 # Deploys Falco (eBPF runtime detection) + Falcosidekick (alert routing)
 # onto an existing private, VPC-native GKE cluster. Falco itself needs
-# no cloud credentials. Falcosidekick's GCP Pub/Sub output has no
-# Workload Identity support in this chart (confirmed against 9.1.0 -
-# its pod's serviceAccountName is hardcoded by the chart, not
-# configurable) - it authenticates via a static base64-encoded JSON
-# key instead, same pattern this repo already uses for Ratify's GAR
-# auth (see docs/decisions/ratify-gcp-auth-tradeoff.md).
+# no cloud credentials. Falcosidekick publishes through a GKE Workload
+# Identity-bound Kubernetes ServiceAccount when Pub/Sub alerting is enabled;
+# no JSON service-account key is created or passed to Helm.
 #
 # IMPORTANT: rule_matching must be set to "all" (Falco's default is
 # "first" as of 0.36.0+). With the default, Falco stops evaluating
@@ -57,24 +54,16 @@ resource "helm_release" "falco" {
         enabled      = var.enable_falcosidekick
         replicaCount = 2
 
-        config = merge(
-          {
-            debug = false
-          },
-          {
-            gcp = merge(
-              {
-                credentials = var.falcosidekick_gcp_credentials_b64
-              },
-              var.alert_pubsub_topic_id != null ? {
-                pubsub = {
-                  projectid = var.project_id
-                  topic     = split("/", var.alert_pubsub_topic_id)[3]
-                }
-              } : {}
-            )
-          }
-        )
+        config = {
+          debug = false
+
+          gcp = var.alert_pubsub_topic_id != null ? {
+            pubsub = {
+              projectid = var.project_id
+              topic     = split("/", var.alert_pubsub_topic_id)[3]
+            }
+          } : {}
+        }
       }
 
       customRules = var.custom_rules_yaml != "" ? {
@@ -89,4 +78,30 @@ resource "helm_release" "falco" {
       ]
     })
   ]
+}
+
+# The embedded Falcosidekick chart creates this ServiceAccount. Chart 9.1.0
+# does not expose a direct annotation value, so this narrow, declarative patch
+# adds the standard GKE Workload Identity annotation after Helm creates it.
+# Falcosidekick's GCP Pub/Sub client uses Application Default Credentials when
+# config.gcp.credentials is empty.
+resource "kubernetes_annotations" "falcosidekick_workload_identity" {
+  count = var.falcosidekick_gsa_email == null ? 0 : 1
+
+  api_version = "v1"
+  kind        = "ServiceAccount"
+
+  metadata {
+    name      = "falco-falcosidekick"
+    namespace = var.namespace
+  }
+
+  annotations = {
+    "iam.gke.io/gcp-service-account" = var.falcosidekick_gsa_email
+  }
+
+  field_manager = "terraform-falco-workload-identity"
+  force         = true
+
+  depends_on = [helm_release.falco]
 }

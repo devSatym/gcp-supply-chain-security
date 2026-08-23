@@ -55,7 +55,7 @@ resource "google_storage_bucket" "function_source" {
   project                     = var.project_id
   location                    = var.region
   uniform_bucket_level_access = true
-  force_destroy               = true
+  force_destroy               = false
   labels                      = var.labels
 }
 

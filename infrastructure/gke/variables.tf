@@ -92,7 +92,7 @@ variable "master_authorized_networks" {
 variable "enable_managed_prometheus" {
   description = "Enable Google Cloud Managed Service for Prometheus"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "maintenance_start_time" {
