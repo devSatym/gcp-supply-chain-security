@@ -35,8 +35,8 @@ Last updated: 2026-08-23
 - Falco loaded `custom-rules.yaml` and emitted a CRITICAL
   `Shell Spawned In Signed Workload Pod` event for controlled `kubectl exec`.
 - PR #2 passed Detect relevant changes, Semgrep, Trivy filesystem scan, policy
-  tests, and PR Image Scan. Its production artifact jobs were skipped by
-  design and had no GCP/WIF authority.
+  tests, and PR Image Scan. Its production artifact jobs had no GCP/WIF
+  authority.
 - Main run `32638968765` passed the hardened trusted chain: exact-digest
   Trivy scan, keyless signing, SPDX SBOM, SLSA provenance, and fail-closed
   signature/SBOM/provenance verification. It produced verified digest

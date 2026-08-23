@@ -122,8 +122,9 @@ No CI service-account JSON key is used. The WIF provider condition is scoped to
 On a relevant pull request, the pipeline runs change detection, Semgrep, Trivy
 filesystem scanning, policy tests, and a local Docker image build plus Trivy
 image scan. It does not obtain a GitHub OIDC token, authenticate to GCP, push
-to GAR, sign, attest, modify Git, or deploy. The skipped production jobs shown
-under `Deploy` on a PR are therefore intentional security controls.
+to GAR, sign, attest, modify Git, or deploy. The trusted `Deploy` workflow
+does not trigger on pull requests, so the PR UI shows only the applicable
+unprivileged gates.
 
 On a push to `main` (or a manually confirmed dispatch that is explicitly on
 `main`), the trusted sequence is:
