@@ -16,7 +16,7 @@ The live implementation was validated on 2026-08-23 in GCP project
 | --- | --- |
 | GKE | Private regional `prod-cluster`, healthy workloads |
 | GAR | Immutable primary image repository plus separate Cosign metadata repository |
-| CI | WIF-authenticated build, Trivy, Cosign, SPDX, SLSA, Rekor verification |
+| CI | Unprivileged PR gates; WIF-authenticated main build, Trivy, Cosign, SPDX, SLSA, and Rekor verification |
 | GitOps | Argo CD Application `Synced/Healthy` |
 | Admission | Kyverno 1.19.0 `Enforce`, signature/SBOM/provenance/digest checks |
 | Runtime | Falco 0.44.1 modern eBPF; custom shell rule fired at CRITICAL |
@@ -25,10 +25,17 @@ The live implementation was validated on 2026-08-23 in GCP project
 Deployed image:
 
 ```text
-europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security/supply-chain-demo@sha256:32a90d832fdf76794fa5477e42e1fdcec9eb6e0deee48ad466d1f7d9fc563
+europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security/supply-chain-demo@sha256:32a90d832fdf76794fa5477e42e1fdcec28c9eb6e0deee48ad466d1f7d9fc563
 ```
 
-The GitHub deployment run was `32630716371` for commit `9bf574c`.
+The deployed digest was produced by GitHub run `32630716371` for commit
+`9bf574c`. The latest hardened main-chain validation is
+[`32638968765`](https://github.com/devSatym/gcp-supply-chain-security/actions/runs/32638968765)
+for merge commit `27a94b0`: Build and Push, final-image Trivy, keyless
+signing, SPDX/SLSA attestations, and strict verification all passed. It
+produced verified digest
+`sha256:a0073f8f1d73f62ab0a15634a48387e78f6f837cff80f27a5c6e3b0a5c1eb16a`;
+the deployed digest above remains the deliberately manual GitOps promotion.
 
 ## Trust architecture
 
@@ -110,6 +117,29 @@ repository:
 No CI service-account JSON key is used. The WIF provider condition is scoped to
 `devSatym/gcp-supply-chain-security`.
 
+## CI security behavior
+
+On a relevant pull request, the pipeline runs change detection, Semgrep, Trivy
+filesystem scanning, policy tests, and a local Docker image build plus Trivy
+image scan. It does not obtain a GitHub OIDC token, authenticate to GCP, push
+to GAR, sign, attest, modify Git, or deploy. The skipped production jobs shown
+under `Deploy` on a PR are therefore intentional security controls.
+
+On a push to `main` (or a manually confirmed dispatch that is explicitly on
+`main`), the trusted sequence is:
+
+```text
+Build/push → exact-digest Trivy scan → keyless signature → SPDX SBOM
+→ SLSA provenance → strict signature/SBOM/provenance verification
+```
+
+The CI verifier requires the exact signer identity, GitHub OIDC issuer,
+immutable subject digest, SPDX predicate, SLSA predicate, GitHub Actions
+builder, `sign-attest.yml` entrypoint, canonical source URI, and source commit.
+Promotion to the Helm digest is deliberately a reviewed manual GitOps step;
+Argo CD deploys only that digest and Kyverno independently checks the same
+trust contract at admission.
+
 ## Terraform and GCP
 
 Terraform state is stored remotely:
@@ -180,23 +210,23 @@ Cosign must be told where legacy metadata indexes live:
 
 ```bash
 export REGISTRY='europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security/supply-chain-demo'
-export DIGEST='sha256:32a90d832fdf76794fa5477e42e1fdcec9eb6e0deee48ad466d1f7d9fc563'
+export DIGEST='sha256:32a90d832fdf76794fa5477e42e1fdcec28c9eb6e0deee48ad466d1f7d9fc563'
 export COSIGN_REPOSITORY='europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security-attestations/supply-chain-demo'
 export CERT_IDENTITY='https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/sign-attest.yml@refs/heads/main'
 export OIDC_ISSUER='https://token.actions.githubusercontent.com'
 
 cosign verify \
-  --certificate-identity-regexp="$CERT_IDENTITY" \
+  --certificate-identity="$CERT_IDENTITY" \
   --certificate-oidc-issuer="$OIDC_ISSUER" \
   "$REGISTRY@$DIGEST"
 
 cosign verify-attestation \
-  --certificate-identity-regexp="$CERT_IDENTITY" \
+  --certificate-identity="$CERT_IDENTITY" \
   --certificate-oidc-issuer="$OIDC_ISSUER" \
   --type spdxjson "$REGISTRY@$DIGEST"
 
 cosign verify-attestation \
-  --certificate-identity-regexp="$CERT_IDENTITY" \
+  --certificate-identity="$CERT_IDENTITY" \
   --certificate-oidc-issuer="$OIDC_ISSUER" \
   --type slsaprovenance "$REGISTRY@$DIGEST"
 ```
