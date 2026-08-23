@@ -102,7 +102,7 @@ variable "maintenance_start_time" {
 }
 
 variable "node_pools" {
-  description = "Map of node pool configurations, keyed by pool name"
+  description = "Map of node pool configurations, keyed by pool name. min_size, max_size, and desired_size are total nodes across the pool, not nodes per zone."
   type = map(object({
     machine_type = string
     min_size     = number

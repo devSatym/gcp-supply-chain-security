@@ -65,7 +65,7 @@ module "gke" {
 | enable_private_endpoint | Disable public master endpoint | `bool` | `false` | no |
 | master_ipv4_cidr_block | CIDR for the GKE master | `string` | `"172.16.0.0/28"` | no |
 | master_authorized_networks | CIDRs allowed to reach the master | `list(object)` | `[]` | no |
-| node_pools | Map of node pool configs | `map(object)` | n/a | yes |
+| node_pools | Map of node pool configs; sizes are total nodes across the pool | `map(object)` | n/a | yes |
 | node_pool_roles | IAM roles granted to node pool SAs | `list(string)` | see variables.tf | no |
 | environment | dev / staging / prod | `string` | n/a | yes |
 | owner | Owner label | `string` | n/a | yes |

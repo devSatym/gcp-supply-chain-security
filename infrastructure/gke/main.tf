@@ -16,6 +16,13 @@ locals {
       managed_by  = "terraform"
     }
   )
+
+  # GKE interprets initial_node_count as a count per zone for regional and
+  # multi-zonal pools. The public node_pools input deliberately uses total
+  # counts, so spread the requested initial capacity across the selected zones.
+  # A regional cluster without explicit locations uses GKE's usual three-zone
+  # placement; a zonal cluster uses exactly one zone.
+  node_pool_zone_count = var.regional ? max(1, length(var.node_locations) > 0 ? length(var.node_locations) : 3) : 1
 }
 
 # -----------------------------------------------------------------------------
@@ -154,11 +161,11 @@ resource "google_container_node_pool" "main" {
   location = var.regional ? var.region : var.zone
   cluster  = google_container_cluster.main.name
 
-  initial_node_count = each.value.desired_size
+  initial_node_count = max(1, ceil(each.value.desired_size / local.node_pool_zone_count))
 
   autoscaling {
-    min_node_count = each.value.min_size
-    max_node_count = each.value.max_size
+    total_min_node_count = each.value.min_size
+    total_max_node_count = each.value.max_size
   }
 
   management {

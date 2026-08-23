@@ -100,7 +100,7 @@ variable "master_authorized_networks" {
 }
 
 variable "node_pools" {
-  description = "Map of GKE node pool configurations"
+  description = "Map of GKE node pool configurations. min_size, max_size, and desired_size are total nodes across the pool, not nodes per zone."
   type = map(object({
     machine_type = string
     min_size     = number
