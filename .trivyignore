@@ -1,8 +1,15 @@
 # .trivyignore
 
+# CVE-2026-14456: Debian Trixie currently marks OpenSSL 3.5.6 as vulnerable
+# with no security update available. The flaw requires an application to run
+# an OpenSSL QUIC listener and accept QUIC Initial packets. This image runs
+# Uvicorn's TCP HTTP service on port 8000 and contains no QUIC/HTTP3 listener.
+# Reassess and remove this exception when Debian publishes a fixed package.
+CVE-2026-14456
+
 # CVE-2026-8376: Perl heap buffer overflow when compiling regex with a
 # repeated fixed string -- only affects 32-bit Perl builds. Our base image
-# (python:3.12-slim-bookworm) is amd64/64-bit; the overflow condition cannot
+# (python:3.12-slim-trixie) is amd64/64-bit; the overflow condition cannot
 # trigger on a 64-bit build. Architecture-inapplicable.
 CVE-2026-8376
 

@@ -39,7 +39,7 @@ PR merged to main
        v
 deploy.yml
   -- build-push.yml
-       -- docker buildx build (python:3.12-slim-bookworm, multi-stage)
+       -- docker buildx build (python:3.12-slim-trixie, multi-stage)
        -- push to Google Artifact Registry by SHA tag only (no :latest)
             -- Registry: europe-west1-docker.pkg.dev/<project>/supply-chain-security/supply-chain-demo
             -- Auth: Workload Identity Federation (OIDC token exchange, no static keys)

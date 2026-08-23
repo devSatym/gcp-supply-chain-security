@@ -3,7 +3,7 @@
 # Install dependencies into a virtual environment so only the
 # venv directory needs to be copied into the final image.
 # ----------------------------------------------------------------
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.12-slim-trixie AS builder
 
 WORKDIR /build
 
@@ -18,9 +18,12 @@ RUN apt-get update \
 
 COPY app/requirements.txt .
 
+# pip and setuptools are build tooling, not application runtime dependencies.
+# Removing them avoids shipping their vendored code.
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip --no-cache-dir \
-    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt \
+    && /opt/venv/bin/pip uninstall --yes pip setuptools
 
 
 # ----------------------------------------------------------------
@@ -28,7 +31,7 @@ RUN python -m venv /opt/venv \
 # Runtime image containing only the virtual environment,
 # application code, and a non-root user.
 # ----------------------------------------------------------------
-FROM python:3.12-slim-bookworm AS final
+FROM python:3.12-slim-trixie AS final
 
 # Build-time args injected by GitHub Actions
 ARG GIT_SHA=unknown
@@ -44,6 +47,12 @@ LABEL org.opencontainers.image.description="Supply chain security demo -- FastAP
 LABEL org.opencontainers.image.revision="${GIT_SHA}"
 
 WORKDIR /app
+
+# Apply available Debian security updates in the final runtime stage. The
+# official Python image can be published before a Debian security update.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy only the virtual environment from the builder
 COPY --from=builder /opt/venv /opt/venv
