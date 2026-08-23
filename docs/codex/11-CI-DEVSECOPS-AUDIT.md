@@ -16,21 +16,21 @@ not authenticate to GCP, push to GAR, sign, attest, update Git, or deploy.
 The main-branch chain is build and push -> Trivy scan by immutable digest ->
 Cosign keyless signing -> SPDX SBOM attestation -> SLSA provenance attestation
 -> verification. A successful main run, 32630716371, proves all of those
-stages for the deployed digest's source run. The later main run triggered by
-the PR security-gate merge also reached successful build, scan, signing, and
-verification stages during this audit.
+stages for the deployed digest's source run. The hardened main run
+32638968765 subsequently passed Build and Push, final Trivy, Sign and Attest,
+and the stricter Verify job for merge commit 27a94b0.
 
 There is no evidence of a pull_request_target workflow, a CI JSON
 service-account key, a write-all permission, or a PR path to GCP Workload
 Identity Federation. The observed skipped production jobs on a PR are expected
 security controls, not failed gates.
 
-Two workflow fixes are justified:
+Two workflow fixes were implemented and validated:
 
-1. Verify must enforce the expected provenance builder, source URI, and
-   workflow entrypoint rather than only printing them.
-2. A manually dispatched trusted build must be restricted to refs/heads/main,
-   not merely guarded by a typed confirmation.
+1. Verify now fails closed unless the provenance predicate, builder, source
+   URI, source commit, workflow entrypoint, and subject digest match.
+2. A manually dispatched trusted build now requires refs/heads/main as well
+   as the typed confirmation.
 
 Two controls remain outside this change set:
 
@@ -61,7 +61,7 @@ behavior meets the intended project security controls.
 | Workflow | File | Trigger | PR | Push main | Manual | Paths | Permissions | Produces artifact? | Pushes artifact? | Security purpose |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR Check | .github/workflows/pr-check.yml | pull_request to main | Yes | No | No | Workflow always starts; jobs use an in-workflow relevant-path filter | contents: read; security-events: write; pull-requests: read | SARIF reports | No | PR SAST, filesystem scan, identity/policy regression tests |
-| Deploy | .github/workflows/deploy.yml | push to main; pull_request to main; workflow_dispatch | Yes, local scan only | Yes | Yes, typed confirm | Push paths: app, Dockerfile, .dockerignore, root workflows/actions. PR has no path filter. | contents: read; id-token: write; security-events: write. PR image job overrides to omit id-token. | Local PR image or GAR image and attestations | Main/manual only | Orchestrates trusted build, scan, sign, attest, and verify |
+| Deploy | .github/workflows/deploy.yml | push to main; pull_request to main; workflow_dispatch | Yes, local scan only | Yes | Yes, typed confirm on canonical main only | Push paths: app, Dockerfile, .dockerignore, root workflows/actions. PR has no path filter. | contents: read; id-token: write; security-events: write. PR image job overrides to omit id-token. | Local PR image or GAR image and attestations | Main/manual only | Orchestrates trusted build, scan, sign, attest, and verify |
 | Build and Push | .github/workflows/build-push.yml | workflow_call only | Called only from trusted Deploy job | Called from Deploy | Called from Deploy | Caller-controlled | contents: read; security-events: write; id-token: write | Docker image, digest output, SARIF | When push input is true | WIF auth, GAR build/push, final immutable-image scan |
 | Sign and Attest | .github/workflows/sign-attest.yml | workflow_call only | Not independently runnable | Called after build | Called after build | Caller-controlled | contents: read; id-token: write | SPDX JSON artifact, signature, two attestations | Cosign metadata only | Keyless signature, SPDX SBOM, SLSA provenance |
 | Verify Attestations | .github/workflows/verify.yml | workflow_call only | Not independently runnable | Called after sign | Called after sign | Caller-controlled | contents: read; id-token: write | Job summary | No | Signature, SBOM, and provenance verification |
@@ -93,10 +93,10 @@ Terraform apply, git commit, or git push.
 | Security Scan / semgrep | Called job; if run-scan. | contents read, security-events write. Pinned Semgrep container; no cloud auth. | semgrep.sarif, category semgrep. | PR caller only. No GCP/GAR/sign/attest/Git/deploy authority. |
 | Security Scan / trivy | Called job; if run-scan. | contents read, security-events write. No cloud auth. | trivy.sarif, category trivy-fs. | PR caller only. No GCP/GAR/sign/attest/Git/deploy authority. |
 | Deploy / pr-image-scan | If event is pull_request; no needs. PR trigger exists for this job. | Job overrides to contents read and security-events write. Specifically no id-token. No environment or GCP auth. | Local image named supply-chain-demo:pr-SHA and trivy-image.sarif. | PR only. Builds locally, never pushes GAR, signs, attests, modifies Git, or deploys. |
-| Deploy / build-push | If event is push or manual confirm equals deploy. | Caller supplies GAR/WIF variables to reusable workflow. No environment. | Delegated digest output from callee. | Skipped on PR. Main/manual trusted artifact operation; can authenticate to GCP and push GAR. Cannot modify Git or deploy. |
-| Deploy / sbom-vex | Same event condition as build-push; no needs. | contents read only in callee. | CycloneDX and report artifacts. | Skipped on PR. Main/manual only. No GCP, GAR, signing, Git, or deployment mutation. |
-| Deploy / sign-attest | Needs build-push; no explicit if, so a skipped/failed need prevents it. | Calls callee with WIF/GAR/Cosign variables. | No caller output. | Skipped on PR. Main/manual only; can access GAR, sign, and attest. Cannot modify Git or deploy. |
-| Deploy / verify | Needs build-push and sign-attest; no explicit if, so a skipped/failed need prevents it. | Calls callee with WIF/GAR/Cosign variables. | Verification summary. | Skipped on PR. Main/manual only; reads GAR/Cosign metadata. Cannot sign, modify Git, or deploy. |
+| Deploy / build-push | If ref is refs/heads/main and the event is push or manual confirm equals deploy. | Caller supplies GAR/WIF variables to reusable workflow. No environment. | Delegated digest output from callee. | Skipped on PR and non-main manual refs. Main-only trusted artifact operation; can authenticate to GCP and push GAR. Cannot modify Git or deploy. |
+| Deploy / sbom-vex | Same canonical-main event condition as build-push; no needs. | contents read only in callee. | CycloneDX and report artifacts. | Skipped on PR and non-main manual refs. Main-only. No GCP, GAR, signing, Git, or deployment mutation. |
+| Deploy / sign-attest | Needs build-push and explicitly requires refs/heads/main. A skipped/failed need prevents it. | Calls callee with WIF/GAR/Cosign variables. | No caller output. | Skipped on PR and non-main refs. Main-only; can access GAR, sign, and attest. Cannot modify Git or deploy. |
+| Deploy / verify | Needs build-push and sign-attest and explicitly requires refs/heads/main. A skipped/failed need prevents it. | Calls callee with WIF/GAR/Cosign variables. | Verification summary. | Skipped on PR and non-main refs. Main-only; reads GAR/Cosign metadata. Cannot sign, modify Git, or deploy. |
 | Build and Push / build | No needs; invoked only by Deploy. Trivy step runs only if push input is true. | contents read, security-events write, id-token write. GCP Auth uses GitHub OIDC and WIF. No environment. | Output: steps.build.outputs.digest. Image tag uses github.sha; SARIF category trivy-image. | Main/manual caller only. Can authenticate to GCP and push GAR; cannot sign, attest, modify Git, or deploy. |
 | Sign and Attest / sign-attest | No needs; invoked after Build and Push. | contents read, id-token write. GCP Auth, Cosign keyless OIDC, Syft. No environment. | sbom.spdx.json upload artifact; Cosign signature; SPDX and SLSA attestations. | Main/manual caller only. Can authenticate to GCP, sign, and attest. Cannot modify Git or deploy. |
 | Verify / verify | No needs; invoked after Build and Sign. | contents read, id-token write. GCP Auth and Cosign. No environment. | Step summary with verification fields. | Main/manual caller only. Reads registry and Sigstore data. Cannot sign, modify Git, or deploy. |
@@ -138,9 +138,9 @@ when their documented relevant paths change.
   grant an untrusted contributor access to production artifact authority and
   could create artifacts that look trusted. plan.md requires those operations
   after trusted main code, not from PR code.
-- The manual row currently represents Deploy with an explicit confirm input.
-  The ref restriction identified in CI-002 must be added before treating it as
-  a main-only trusted path.
+- The manual row represents Deploy with an explicit confirm input on
+  refs/heads/main. The implemented CI-002 guard prevents a manually selected
+  feature branch from reaching WIF/GAR/signing authority.
 - Desired-state pinning is intentionally manual: plan.md phase 29 specifies
   updating Helm values with a verified digest after the pipeline succeeds.
   No workflow writes Git. The exact current pin is traceable to a successful
@@ -344,9 +344,11 @@ The provenance predicate is SLSA v0.2 and includes:
 
 Kyverno checks the expected signer identity, issuer, Rekor, SPDX predicate,
 SLSA predicate, builder, entrypoint, source URI, GAR scope, and verifyDigest.
-The CI verify workflow currently verifies the signer, issuer, digest, and
-attestation types, but only prints the provenance builder and entrypoint.
-CI-001 records the missing failure assertions.
+The hardened CI Verify workflow independently fails closed unless the signature
+has the expected immutable digest; the SPDX attestation has the correct
+predicate and subject digest; and the SLSA provenance has the expected
+predicate, subject digest, builder, entrypoint, source URI, source commit, and
+material source/commit.
 
 ## Dependency and bypass analysis
 
@@ -376,7 +378,7 @@ gate required for admission.
 | OIDC issuer / Rekor | Cosign keyless default verification | Kyverno issuer and Rekor URL | PASS |
 | SPDX SBOM | Syft SPDX JSON; Cosign spdxjson attestation | Kyverno SPDX Document attestation | PASS |
 | SLSA | Cosign slsaprovenance predicate | Kyverno SLSA v0.2 predicate | PASS |
-| Builder / entrypoint / source | Provenance generator | Kyverno conditions | PASS at admission; CI verify assertion must be hardened |
+| Builder / entrypoint / source | Provenance generator | Kyverno conditions | PASS in both CI verification and admission |
 | Git source | Manual immutable digest commit | Argo canonical repo, main, Helm path | PASS |
 
 The happy-path Argo Application points at the canonical repository, main, and
@@ -420,20 +422,27 @@ nothing safe to verify on a local-only PR image.
 PLAN.MD REQUIREMENT: Verification follows the main artifact trust chain.
 ACTION: KEEP.
 
-## Implementation plan from this audit
+## Implementation result and follow-up plan
 
-1. Add a refs/heads/main guard to each privileged Deploy caller condition.
-   This retains main and deliberate main manual runs while preventing a
-   manually selected feature branch from obtaining CI WIF/GAR authority.
-2. Add explicit, fail-closed provenance assertions to Verify for predicate
-   type, builder, entrypoint, source URI, and subject digest.
-3. Keep the PR image scan in Deploy. Its skipped production jobs are safe and
-   intentional; no workflow split is justified.
-4. Do not enable a blocking IaC/config scan until an owned baseline exists.
-   Resolve the GKE findings and intentionally insecure negative fixture scope,
-   then introduce a version-pinned, fail-closed scanner.
-5. Do not apply the defined GitHub main ruleset without explicit user approval,
-   because that is a branch-protection change with recovery implications.
+Completed:
+
+1. CI-002: added refs/heads/main guards to privileged Deploy callers and their
+   dependent Sign and Verify jobs. A manual dispatch must now select main and
+   supply the typed confirmation.
+2. CI-001: added fail-closed signature, SPDX, and SLSA contract assertions to
+   Verify. Exact certificate identity matching replaces the earlier regular
+   expression matching.
+3. Kept PR Image Scan in Deploy. Its skipped production jobs remain safe and
+   intentional; splitting the workflow would not improve the security model.
+4. Validated the change through PR #2 and main run 32638968765.
+
+Follow-up:
+
+1. Do not enable a blocking IaC/config scan until an owned baseline exists.
+   Resolve or scope the GKE findings and intentionally insecure negative
+   fixture paths, then introduce a version-pinned, fail-closed scanner.
+2. Do not apply the defined GitHub main ruleset without explicit user approval,
+   because it is a branch-protection change with recovery implications.
 
 ## Observed run evidence
 
@@ -442,4 +451,5 @@ ACTION: KEEP.
 | Real relevant PR | 32636629041 | SUCCESS | Detect relevant changes, policy tests, Semgrep, Trivy |
 | Real PR local image | 32636629034 | SUCCESS | PR Image Scan; production jobs skipped |
 | Previous main trusted chain | 32630716371 | SUCCESS | Build/push, final Trivy, sign/attest, verify, supplementary SBOM/VEX |
-| Post-merge main trusted chain | 32637247387 | Observed running during audit; build, final Trivy, sign/attest, and verify all succeeded before the VEX tail completed | Validates actual main path after PR merge |
+| Hardened relevant PR | 32638905514 and 32638905554 | SUCCESS | PR #2 passed Semgrep, Trivy filesystem, policy tests, and PR Image Scan; privileged jobs skipped by design |
+| Hardened main trusted chain | 32638968765 | SUCCESS | Build/push, final Trivy, keyless sign, SPDX/SLSA attestations, strict signature/SBOM/provenance Verify, and supplementary SBOM/VEX all passed for 27a94b0; verified digest a0073f8f1d73f62ab0a15634a48387e78f6f837cff80f27a5c6e3b0a5c1eb16a |

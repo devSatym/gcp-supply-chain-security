@@ -63,7 +63,7 @@ Region: europe-west1
 GKE cluster: prod-cluster
 Terraform state: gs://valiant-house-502004-k2-gcp-supply-chain-tfstate
 State prefix: gcp-supply-chain-security/prod
-Application digest: sha256:32a90d832fdf76794fa5477e42e1fdcec9eb6e0deee48ad466d1f7d9fc563
+Application digest: sha256:32a90d832fdf76794fa5477e42e1fdcec28c9eb6e0deee48ad466d1f7d9fc563
 ```
 
 The final Terraform plan reports no changes. Any future `terraform destroy`,

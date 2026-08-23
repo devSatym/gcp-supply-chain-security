@@ -16,6 +16,11 @@
 | Keep runtime alerting opt-in | No Discord webhook was supplied; Terraform must not create a fake secret or function | Confirmed |
 | Keep node-pool sizes as total counts | Prevents unintended regional overprovisioning; autoscaler bounds are 1–2 nodes | Live |
 | Keep Gatekeeper/Ratify/cert-manager/ExternalDNS disabled | Outside final portfolio scope | Confirmed |
+| Keep production Deploy jobs skipped on pull requests | PRs validate source and a locally built image without GCP WIF, GAR push, signing, attestation, Git mutation, or deployment authority | Confirmed by PR #2 |
+| Restrict trusted manual dispatch to canonical main | A typed confirmation alone does not constrain the selected ref; privileged WIF/GAR jobs now require `refs/heads/main` | Implemented and validated |
+| Fail closed on provenance contract details in CI | Verification now asserts predicate, subject digest, builder, entrypoint, source URI, and source commit instead of merely printing provenance fields | Implemented and validated |
+| Defer a blocking IaC/config scan until baselined | Current repository has genuine GKE findings, intentionally insecure fixtures, and an observed old-Trivy misconfiguration scan failure | Follow-up hardening |
+| Do not apply the GitHub ruleset automatically | Branch protection can affect recovery; Terraform definition exists but remote rulesets are currently absent | Requires explicit approval |
 
 ## History validation record
 

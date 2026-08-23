@@ -24,7 +24,7 @@ Build/Push, SBOM/VEX, Sign and Attest, and Verify. The deployed primary GAR
 image is:
 
 ```text
-europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security/supply-chain-demo@sha256:32a90d832fdf76794fa5477e42e1fdcec9eb6e0deee48ad466d1f7d9fc563
+europe-west1-docker.pkg.dev/valiant-house-502004-k2/supply-chain-security/supply-chain-demo@sha256:32a90d832fdf76794fa5477e42e1fdcec28c9eb6e0deee48ad466d1f7d9fc563
 ```
 
 The immutable primary repository has the matching digest. Legacy Cosign
