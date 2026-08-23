@@ -1,0 +1,4 @@
+# Retained upstream artifact; GitHub does not execute workflows below
+# infrastructure/.github/. The active monorepo infrastructure workflow is
+# .github/workflows/infrastructure-terraform.yml and remains in Semgrep scope.
+infrastructure/.github/workflows/terraform.yml

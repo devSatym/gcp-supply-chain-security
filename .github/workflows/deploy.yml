@@ -10,6 +10,9 @@ on:
       - '.dockerignore'
       - '.github/workflows/**'
       - '.github/actions/**'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       confirm:
@@ -30,6 +33,47 @@ permissions:
   security-events: write
 
 jobs:
+  pr-image-scan:
+    name: PR Image Scan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Build image for local scan
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          tags: supply-chain-demo:pr-${{ github.sha }}
+
+      - name: Scan PR image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: supply-chain-demo:pr-${{ github.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          format: sarif
+          output: trivy-image.sarif
+          trivyignores: .trivyignore
+          limit-severities-for-sarif: true
+
+      - name: Upload PR image scan SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
   build-push:
     name: Build and Push
     # On a real push this always runs. On workflow_dispatch (e.g. re-signing
