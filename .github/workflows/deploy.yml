@@ -80,7 +80,9 @@ jobs:
     # after a Sigstore outage), it only runs if the confirm input matches --
     # a one-click "Run workflow" button with no guard would let anyone with
     # write access silently trigger a full rebuild-and-resign.
-    if: github.event_name == 'push' || github.event.inputs.confirm == 'deploy'
+    # workflow_dispatch lets a maintainer select a ref in the UI. Keep all
+    # WIF/GAR authority on canonical main even when the confirmation is valid.
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.inputs.confirm == 'deploy')
     uses: ./.github/workflows/build-push.yml
     with:
       image-tag: ${{ github.sha }}
@@ -94,12 +96,13 @@ jobs:
 
   sbom-vex:
     name: SBOM and VEX (non-blocking)
-    if: github.event_name == 'push' || github.event.inputs.confirm == 'deploy'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.inputs.confirm == 'deploy')
     uses: ./.github/workflows/sbom-vex.yml
 
   sign-attest:
     name: Sign and Attest
     needs: build-push
+    if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/sign-attest.yml
     with:
       digest: ${{ needs.build-push.outputs.digest }}
@@ -114,6 +117,7 @@ jobs:
   verify:
     name: Verify
     needs: [build-push, sign-attest]
+    if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/verify.yml
     with:
       digest: ${{ needs.build-push.outputs.digest }}
