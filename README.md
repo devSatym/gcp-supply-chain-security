@@ -664,13 +664,4 @@ The disposable unsigned Artifact Registry image should be deleted only after its
 - Falco modern eBPF runtime detection and Falcosidekick integration
 - Debugging and proving negative admission outcomes instead of only showing a happy path
 
-For concise resume material and interview explanations, see [docs/codex/09-RESUME-MATERIAL.md](docs/codex/09-RESUME-MATERIAL.md) and [docs/codex/10-INTERVIEW-GUIDE.md](docs/codex/10-INTERVIEW-GUIDE.md).
 
-## Upstream Attribution
-
-This project is a canonical monorepo assembled from two upstream component areas:
-
-- application/security source attribution: [musaumakau/supply-chain-security](https://github.com/musaumakau/supply-chain-security)
-- infrastructure/runtime-security source attribution: [musaumakau/gcp-infrastructure-modules](https://github.com/musaumakau/gcp-infrastructure-modules)
-
-The active runtime identity is [devSatym/gcp-supply-chain-security](https://github.com/devSatym/gcp-supply-chain-security). The imported infrastructure component remains under **infrastructure/**. The canonical two-parent history and attribution details are recorded in [docs/repository-merge.md](docs/repository-merge.md); they are provenance context, not the central security claim of this project.
