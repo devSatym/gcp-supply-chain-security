@@ -1,0 +1,44 @@
+# Replace every placeholder before use. Do not put credentials, client
+# secrets, storage keys, connection strings, or real webhooks in committed
+# tfvars. The Discord webhook, if ever used, goes through
+# TF_VAR_discord_webhook_url only.
+
+resource_group_name = "rg-supply-chain-prod"
+location            = "REPLACE_WITH_OWNER_REGION"
+vnet_name           = "vnet-supply-chain-prod"
+cluster_name        = "aks-supply-chain-prod"
+
+# Entra groups for AKS cluster-admin via Azure RBAC. Never individuals.
+azure_rbac_admin_group_object_ids = [
+  "00000000-0000-0000-0000-000000000000",
+]
+
+name_prefix         = "supplychain-prod"
+acr_name            = "REPLACE_WITH_UNIQUE_ACR_NAME"
+
+# Stage gates. Apply in the documented order (see README.md).
+enable_workload_addons = false
+enable_runtime_alerting = false
+enable_private_endpoints = false
+enable_flow_logs = false
+# Required only when enable_flow_logs = true; supply an owner-approved,
+# globally unique lowercase StorageV2 name outside source control.
+# flow_logs_storage_account_name = "REPLACE_WITH_UNIQUE_FLOW_LOG_STORAGE_NAME"
+
+# The Azure parity window is daily at 03:00 UTC, matching the active GCP
+# maintenance policy. Override only with an owner-reviewed operations choice.
+node_os_upgrade_channel = "NodeImage"
+enable_maintenance_windows = true
+maintenance_window_frequency = "Daily"
+maintenance_window_interval = 1
+maintenance_window_duration_hours = 4
+maintenance_window_start_time = "03:00"
+maintenance_window_utc_offset = "+00:00"
+
+owner         = "platform-security"
+project_label = "supply-chain-security"
+cost_center   = "security"
+
+tags = {
+  data_classification = "confidential"
+}

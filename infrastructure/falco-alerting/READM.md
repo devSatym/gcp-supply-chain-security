@@ -23,12 +23,18 @@ only alongside a real Falco deployment against a live cluster (see
 `environments/prod/falco-alerting.tf` for the live wiring), not as an
 isolated demo.
 
+For the production root, provide the sensitive `discord_webhook_url` with
+`TF_VAR_discord_webhook_url`; do not place it in a `.tfvars` file. The module
+uses Google provider write-only arguments so the value is not saved in the
+Terraform plan or state. Increment the paired non-secret
+`discord_webhook_secret_version` whenever the webhook URL changes.
+
 ## Requirements
 
 | Name | Version |
 |------|---------|
-| terraform | >= 1.7.0 |
-| google | >= 5.30.0 |
+| terraform | >= 1.11.0 |
+| google | >= 7.0.0 |
 | archive | >= 2.8.0 |
 
 ## Inputs
@@ -39,6 +45,7 @@ isolated demo.
 | region | Region for the Pub/Sub topic and Cloud Function | `string` | n/a | yes |
 | topic_name | Name of the Pub/Sub topic Falcosidekick publishes to | `string` | `"falco-alerts"` | no |
 | discord_webhook_url | Discord incoming webhook URL (sensitive; stored in Secret Manager) | `string` | n/a | yes |
+| discord_webhook_secret_version | Non-secret counter to rotate the write-only webhook value | `number` | n/a | yes |
 | min_priority | Minimum Falco alert priority forwarded to Discord | `string` | `"warning"` | no |
 | function_source_dir | Local path to the Cloud Function source (`main.py` + `requirements.txt`) | `string` | `null` | no |
 | labels | Common labels applied to alerting resources | `map(string)` | see `variables.tf` | no |

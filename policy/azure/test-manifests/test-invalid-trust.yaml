@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-azure-invalid-trust
+  labels:
+    supply-chain-security-test: invalid-trust
+spec:
+  restartPolicy: Never
+  containers:
+    - name: invalid-trust-app
+      # This fixture is intentionally covered by the test-only policy in
+      # test-policies/ and represents a digest whose signer/provenance identity
+      # is not the trusted Azure main workflow.
+      image: example.azurecr.io/supply-chain-security/supply-chain-demo@sha256:7777777777777777777777777777777777777777777777777777777777777777
+      command: ["sh", "-c", "sleep 3600"]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false

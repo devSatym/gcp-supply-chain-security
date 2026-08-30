@@ -1,0 +1,191 @@
+name: Azure Static Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'AGENT.md'
+      - 'infrastructure/azure/**'
+      - 'policy/azure/**'
+      - 'k8s/azure/**'
+      - 'argocd/supply-chain-azure-demo-app.yaml'
+      - '.github/actions/azure-auth/**'
+      - '.github/workflows/azure-*.yml'
+  push:
+    branches:
+      - feature/azure-implementation
+      - main
+    paths:
+      - 'AGENT.md'
+      - 'infrastructure/azure/**'
+      - 'policy/azure/**'
+      - 'k8s/azure/**'
+      - 'argocd/supply-chain-azure-demo-app.yaml'
+      - '.github/actions/azure-auth/**'
+      - '.github/workflows/azure-*.yml'
+  workflow_dispatch:
+
+# This is intentionally static-only: no Azure login, id-token permission,
+# registry access, deployment, or mutation is available from this workflow.
+permissions:
+  contents: read
+
+jobs:
+  yaml-and-policy:
+    name: Azure YAML and Trust Contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Install YAML parser
+        run: python3 -m pip install pyyaml
+
+      - name: Parse Azure YAML and assert the Azure trust contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+          import yaml
+
+          yaml_paths = [
+              *Path(".github/workflows").glob("azure-*.yml"),
+              Path(".github/actions/azure-auth/action.yml"),
+              *Path("policy/azure").rglob("*.yaml"),
+              Path("k8s/azure/supply-chain-demo/values.yaml"),
+              Path("k8s/azure/supply-chain-demo/values.release.yaml.example"),
+              Path("infrastructure/azure/kubernetes-addons/argocd-values.yaml"),
+              Path("argocd/supply-chain-azure-demo-app.yaml"),
+          ]
+          missing = [str(path) for path in yaml_paths if not path.is_file()]
+          if missing:
+              raise SystemExit(f"Missing required Azure asset(s): {', '.join(missing)}")
+
+          for path in yaml_paths:
+              documents = list(yaml.safe_load_all(path.read_text()))
+              if not documents:
+                  raise SystemExit(f"No YAML document in {path}")
+              print(f"OK YAML: {path}")
+
+          policy_path = Path("policy/azure/kyverno/block-unsigned-images.yaml")
+          policy = yaml.safe_load(policy_path.read_text())
+          rules = {rule["name"]: rule for rule in policy["spec"]["rules"]}
+          expected_rules = {
+              "verify-image-signature",
+              "verify-sbom-attestation",
+              "verify-provenance-attestation",
+          }
+          if set(rules) != expected_rules:
+              raise SystemExit(f"Unexpected Azure policy rules: {sorted(rules)}")
+
+          for name in sorted(expected_rules):
+              verify = rules[name]["verifyImages"][0]
+              helpers = verify.get("imageRegistryCredentials", {}).get("helpers")
+              if helpers != ["azure"]:
+                  raise SystemExit(f"{name} must use only the Azure registry helper; got {helpers!r}")
+              references = verify["imageReferences"]
+              expected_prefix = "${acr_login_server}/${application_repository}"
+              if references != [f"{expected_prefix}:*", f"{expected_prefix}@*"]:
+                  raise SystemExit(f"{name} must match the complete placeholder-safe ACR repository; got {references!r}")
+              if verify.get("repository") != "${cosign_repository}":
+                  raise SystemExit(f"{name} must use the placeholder-safe Cosign repository")
+              if any(".pkg.dev" in reference or "google" in reference.lower() for reference in references):
+                  raise SystemExit(f"GCP registry leaked into {name}: {references}")
+
+          provenance = rules["verify-provenance-attestation"]["verifyImages"][0]
+          conditions = provenance["attestations"][0]["conditions"][0]["all"]
+          required_conditions = {
+              ("{{ invocation.configSource.entryPoint }}", ".github/workflows/azure-sign-attest.yml"),
+              ("{{ builder.id }}", "https://github.com/actions/runner"),
+              ("{{ invocation.configSource.uri }}", "git+https://github.com/devSatym/gcp-supply-chain-security@refs/heads/main"),
+          }
+          actual_conditions = {(item["key"], item["value"]) for item in conditions}
+          if actual_conditions != required_conditions:
+              raise SystemExit("Azure provenance conditions drifted from the trusted workflow contract")
+
+          chart_values = yaml.safe_load(Path("k8s/azure/supply-chain-demo/values.yaml").read_text())
+          expected_repository = "${ACR_LOGIN_SERVER}/${ACR_APPLICATION_REPOSITORY}"
+          if chart_values["image"]["repository"] != expected_repository:
+              raise SystemExit("Azure chart does not use the placeholder-safe ACR application repository")
+          if chart_values["image"]["digest"] != "${IMAGE_DIGEST}":
+              raise SystemExit("Azure chart must remain digest-pinned after rendering")
+          PY
+
+      - name: Check Azure policy contract and negative fixtures
+        run: python3 policy/azure/tests/check_azure_policy_contract.py
+
+      - name: Check Azure Falco parity contract
+        run: python3 policy/azure/tests/check_falco_contract.py
+
+      - name: Check Azure GitOps promotion contract
+        run: python3 policy/azure/tests/check_azure_gitops_contract.py
+
+      - name: Lint and render Azure Helm chart
+        run: |
+          helm lint k8s/azure/supply-chain-demo
+          helm template supply-chain-demo k8s/azure/supply-chain-demo > /tmp/supply-chain-azure.yaml
+          # kubectl apply --dry-run=client requires live API discovery, which
+          # cluster-less CI runners cannot provide; assert the render offline.
+          python3 - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          docs = [d for d in yaml.safe_load_all(Path("/tmp/supply-chain-azure.yaml").read_text()) if d]
+          kinds = {d["kind"] for d in docs}
+          assert {"Deployment", "Service"} <= kinds, f"unexpected rendered kinds: {sorted(kinds)}"
+          for d in docs:
+              if d["kind"] != "Deployment":
+                  continue
+              for c in d["spec"]["template"]["spec"]["containers"]:
+                  image = c["image"]
+                  assert "@${IMAGE_DIGEST}" in image, f"rendered image is not digest-pinned: {image}"
+          print(f"OK rendered {len(docs)} documents; kinds={sorted(kinds)}; deployment image is digest-pinned")
+          PY
+
+  terraform:
+    name: Azure Terraform Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+
+      - name: Format and validate each Azure Terraform directory when present
+        shell: bash
+        run: |
+          set -euo pipefail
+          directories=(
+            infrastructure/azure/bootstrap-state
+            infrastructure/azure/supply-chain
+            infrastructure/azure/network
+            infrastructure/azure/aks
+            infrastructure/azure/kubernetes-addons
+            infrastructure/azure/falco
+            infrastructure/azure/falco-alerting
+            infrastructure/azure/environments/prod
+          )
+          found=0
+          for directory in "${directories[@]}"; do
+            if [[ ! -d "$directory" ]] || [[ -z "$(find "$directory" -maxdepth 1 -name '*.tf' -print -quit)" ]]; then
+              echo "SKIP: $directory has not been added yet"
+              continue
+            fi
+            found=1
+            echo "==> Checking $directory"
+            terraform fmt -check -recursive "$directory"
+            terraform -chdir="$directory" init -backend=false -input=false
+            terraform -chdir="$directory" validate -no-color
+          done
+          if [[ "$found" -eq 0 ]]; then
+            echo "No Azure Terraform directory exists yet; static workflow remains intentionally green."
+          fi

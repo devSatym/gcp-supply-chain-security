@@ -1,0 +1,96 @@
+name: Azure Build and Push
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        required: true
+        type: string
+      push:
+        required: true
+        type: boolean
+      acr_name:
+        required: true
+        type: string
+      acr_login_server:
+        required: true
+        type: string
+      acr_repository:
+        required: true
+        type: string
+      azure_client_id:
+        required: true
+        type: string
+      azure_tenant_id:
+        required: true
+        type: string
+      azure_subscription_id:
+        required: true
+        type: string
+    outputs:
+      digest:
+        description: Digest of the built image.
+        value: ${{ jobs.build.outputs.digest }}
+
+env:
+  ACR_NAME: ${{ inputs.acr_name }}
+  ACR_LOGIN_SERVER: ${{ inputs.acr_login_server }}
+  ACR_REPOSITORY: ${{ inputs.acr_repository }}
+
+permissions:
+  contents: read
+  id-token: write
+  security-events: write
+
+jobs:
+  build:
+    name: Build and Push Azure Image
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Authenticate to Azure Container Registry
+        if: inputs.push
+        uses: ./.github/actions/azure-auth
+        with:
+          client_id: ${{ inputs.azure_client_id }}
+          tenant_id: ${{ inputs.azure_tenant_id }}
+          subscription_id: ${{ inputs.azure_subscription_id }}
+          acr_name: ${{ env.ACR_NAME }}
+          acr_login_server: ${{ env.ACR_LOGIN_SERVER }}
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Dockerfile
+          push: ${{ inputs.push }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.ACR_REPOSITORY }}:${{ inputs.image_tag }}
+          outputs: type=image,push-by-digest=false,name-canonical=true
+
+      - name: Scan pushed image with Trivy
+        if: inputs.push
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: "${{ env.ACR_LOGIN_SERVER }}/${{ env.ACR_REPOSITORY }}@${{ steps.build.outputs.digest }}"
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          format: sarif
+          output: trivy-azure-image.sarif
+          trivyignores: .trivyignore
+          limit-severities-for-sarif: true
+
+      - name: Upload Azure image scan SARIF
+        if: inputs.push && always()
+        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          sarif_file: trivy-azure-image.sarif
+          category: trivy-azure-image

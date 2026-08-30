@@ -1,0 +1,64 @@
+# Azure-specific Helm values for the Kyverno release on AKS.
+#
+# This is a Terraform template. Render `kyverno_client_id` from the Terraform
+# output for the dedicated Kyverno UAMI before installing it. An unresolved
+# placeholder cannot authenticate to Azure, which is intentional: no static
+# registry secret or ACR admin credential is an acceptable fallback.
+config:
+  maxContextSize: 8Mi
+
+features:
+  registryClient:
+    allowInsecure: false
+    credentialHelpers:
+      - azure
+
+admissionController:
+  # The live demonstration cluster is a single D2 node while quota is being
+  # resolved. Keep requests bounded so the admission webhook can schedule;
+  # production sizing should be supplied by the environment overlay.
+  replicas: 1
+  container:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 100m
+        memory: 384Mi
+  podLabels:
+    azure.workload.identity/use: "true"
+  rbac:
+                    serviceAccount:
+                      annotations:
+                        azure.workload.identity/client-id: "${kyverno_client_id}"
+
+backgroundController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+cleanupController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+reportsController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
