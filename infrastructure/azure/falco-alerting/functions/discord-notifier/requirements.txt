@@ -1,0 +1,4 @@
+azure-functions==1.*
+azure-identity==1.*
+azure-keyvault-secrets==4.*
+requests==2.*

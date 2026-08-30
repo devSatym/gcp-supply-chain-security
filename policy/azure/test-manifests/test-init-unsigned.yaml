@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-azure-init-unsigned
+  labels:
+    test: azure-init-unsigned
+spec:
+  restartPolicy: Never
+  initContainers:
+    - name: unsigned-init
+      # verifyImages applies to init containers too; the signed main container
+      # must not let an unsigned init container bypass admission.
+      image: example.azurecr.io/supply-chain-security/supply-chain-demo@sha256:2222222222222222222222222222222222222222222222222222222222222222
+      command: ["sh", "-c", "echo init done"]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+  containers:
+    - name: signed-main
+      image: example.azurecr.io/supply-chain-security/supply-chain-demo@sha256:3333333333333333333333333333333333333333333333333333333333333333
+      command: ["sh", "-c", "sleep 3600"]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false

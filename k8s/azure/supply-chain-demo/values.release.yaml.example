@@ -1,0 +1,7 @@
+# Copy this file to values.release.yaml only in an owner-reviewed promotion
+# change. The trusted Azure workflow generates the concrete file from the
+# verified and locked image digest; never replace these placeholders by hand
+# with a mutable tag.
+image:
+  repository: "REPLACE_WITH_OWNER_ACR_LOGIN_SERVER/REPLACE_WITH_OWNER_APPLICATION_REPOSITORY"
+  digest: "sha256:REPLACE_WITH_64_HEX_DIGEST"

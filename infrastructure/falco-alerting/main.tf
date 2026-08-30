@@ -26,8 +26,9 @@ resource "google_secret_manager_secret" "discord_webhook" {
 }
 
 resource "google_secret_manager_secret_version" "discord_webhook" {
-  secret      = google_secret_manager_secret.discord_webhook.id
-  secret_data = var.discord_webhook_url
+  secret                 = google_secret_manager_secret.discord_webhook.id
+  secret_data_wo         = var.discord_webhook_url
+  secret_data_wo_version = var.discord_webhook_secret_version
 }
 
 # Least-privilege runtime SA for the function: only Secret Manager

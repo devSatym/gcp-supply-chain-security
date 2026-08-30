@@ -1,1 +1,12 @@
 .vscode/
+
+# Local-only secret inventory. It may contain real values for local development.
+LOCAL_ENVIRONMENT.md
+
+# Local environment files may contain secrets.
+.env
+.env.*
+!.env.example
+
+# Downloaded local CLI binary; obtain it through the documented setup process.
+cosign-linux-amd64

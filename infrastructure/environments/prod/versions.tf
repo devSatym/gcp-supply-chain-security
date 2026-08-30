@@ -1,10 +1,11 @@
 terraform {
-  required_version = ">= 1.7.0"
+  # Write-only resource arguments keep the Discord webhook out of plans/state.
+  required_version = ">= 1.11.0"
 
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = ">= 5.30.0, < 8.0.0"
+      version = ">= 7.0.0, < 8.0.0"
     }
     google-beta = {
       source  = "hashicorp/google-beta"

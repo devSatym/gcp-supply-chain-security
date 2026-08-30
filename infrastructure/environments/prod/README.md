@@ -30,9 +30,18 @@ project and set `owner` / `project_label` / `cost_center`
 to real values (these become required GCP labels — see `.infracost/policies/tagging.rego`).
 
 Falco alerting is off by default. Only after creating a Discord incoming webhook
-should you set `enable_runtime_alerting = true` and `discord_webhook_url` in
-this ignored file. Treat the URL as a secret: never commit or paste it into a
-log.
+should you set the non-secret `enable_runtime_alerting = true` in this ignored
+file, then pass the URL through the process environment:
+
+```bash
+export TF_VAR_discord_webhook_url='YOUR_NEW_DISCORD_WEBHOOK_URL'
+export TF_VAR_discord_webhook_secret_version=1
+```
+
+Terraform maps `TF_VAR_*` names to input variables. The URL is sent to Secret
+Manager through a write-only provider argument, so it is not retained in a
+Terraform plan or state. Increment the version value whenever the URL rotates.
+Never commit or paste the URL into a log.
 
 ### 3. Init with your backend bucket
 ```bash
@@ -80,8 +89,8 @@ kubectl get nodes
 
 | Name | Version |
 |------|---------|
-| terraform | >= 1.7.0 |
-| google | >= 5.30.0, < 8.0.0 |
+| terraform | >= 1.11.0 |
+| google | >= 7.0.0, < 8.0.0 |
 | google-beta | >= 5.30.0, < 8.0.0 |
 | helm | >= 2.13.0, < 3.0.0 |
 | kubernetes | >= 2.30.0, < 3.0.0 |

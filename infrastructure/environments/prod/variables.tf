@@ -196,7 +196,7 @@ variable "enable_runtime_alerting" {
 }
 
 variable "discord_webhook_url" {
-  description = "Discord incoming webhook URL (Server Settings -> Integrations -> Webhooks). Stored in Secret Manager, never passed as a plain env var."
+  description = "Discord incoming webhook URL (Server Settings -> Integrations -> Webhooks). Pass it with TF_VAR_discord_webhook_url; it is written to Secret Manager through a write-only provider field."
   type        = string
   sensitive   = true
   default     = null
@@ -204,6 +204,17 @@ variable "discord_webhook_url" {
   validation {
     condition     = !var.enable_runtime_alerting || (var.discord_webhook_url != null && startswith(var.discord_webhook_url, "https://discord.com/api/webhooks/"))
     error_message = "Set a Discord incoming-webhook URL when enable_runtime_alerting is true."
+  }
+}
+
+variable "discord_webhook_secret_version" {
+  description = "Non-secret rotation counter for the write-only Discord webhook value. Increment it whenever TF_VAR_discord_webhook_url changes."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.discord_webhook_secret_version >= 1 && floor(var.discord_webhook_secret_version) == var.discord_webhook_secret_version
+    error_message = "discord_webhook_secret_version must be a positive integer."
   }
 }
 

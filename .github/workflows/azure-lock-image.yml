@@ -1,0 +1,66 @@
+name: Azure Lock Verified Image
+
+on:
+  workflow_call:
+    inputs:
+      digest:
+        required: true
+        type: string
+      acr_name:
+        required: true
+        type: string
+      acr_login_server:
+        required: true
+        type: string
+      acr_repository:
+        required: true
+        type: string
+      azure_client_id:
+        required: true
+        type: string
+      azure_tenant_id:
+        required: true
+        type: string
+      azure_subscription_id:
+        required: true
+        type: string
+
+env:
+  ACR_NAME: ${{ inputs.acr_name }}
+  ACR_LOGIN_SERVER: ${{ inputs.acr_login_server }}
+  ACR_REPOSITORY: ${{ inputs.acr_repository }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  lock:
+    name: Lock Verified Azure Image Manifest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Authenticate to Azure Container Registry
+        uses: ./.github/actions/azure-auth
+        with:
+          client_id: ${{ inputs.azure_client_id }}
+          tenant_id: ${{ inputs.azure_tenant_id }}
+          subscription_id: ${{ inputs.azure_subscription_id }}
+          acr_name: ${{ env.ACR_NAME }}
+          acr_login_server: ${{ env.ACR_LOGIN_SERVER }}
+
+      # Application images use unique commit-SHA tags and are deployed only by
+      # digest. Lock the verified manifest after all Cosign writes complete;
+      # COSIGN_REPOSITORY remains separately mutable for signature indexes.
+      - name: Lock verified application manifest against write and delete
+        env:
+          IMAGE_REFERENCE: "${{ env.ACR_REPOSITORY }}@${{ inputs.digest }}"
+        run: |
+          set -euo pipefail
+          az acr repository update \
+            --name "$ACR_NAME" \
+            --image "$IMAGE_REFERENCE" \
+            --write-enabled false \
+            --delete-enabled false

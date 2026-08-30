@@ -1,0 +1,15 @@
+- rule: Shell Spawned In Signed Workload Pod
+  desc: >
+    No application pod in this cluster should ever exec a shell. Workloads are
+    built, signed, and admitted through the supply-chain security pipeline.
+  condition: >
+    spawned_process and container and
+    proc.name in (shell_binaries) and
+    not k8s.ns.name in (kube-system, falco-system, kyverno, argocd)
+  output: >
+    Unexpected shell spawned in hardened pod
+    (user=%user.name pod=%k8s.pod.name ns=%k8s.ns.name
+    container=%container.name image=%container.image.repository
+    cmdline=%proc.cmdline)
+  priority: CRITICAL
+  tags: [supply-chain, shell]

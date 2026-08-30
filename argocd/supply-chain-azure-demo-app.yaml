@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: supply-chain-azure-demo
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/devSatym/gcp-supply-chain-security.git
+    targetRevision: main
+    path: k8s/azure/supply-chain-demo
+    helm:
+      releaseName: supply-chain-demo
+      valueFiles:
+        - values.release.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  # Automatic sync is deliberately absent until an owner-approved promotion
+  # change adds values.release.yaml with the verified, locked digest. The
+  # checked-in base values and this example file are intentionally inert.
+  syncPolicy: {}

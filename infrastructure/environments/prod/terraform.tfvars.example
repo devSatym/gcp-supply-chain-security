@@ -37,7 +37,9 @@ enable_external_dns       = false
 enable_managed_prometheus = false
 enable_runtime_alerting   = false
 
-# After you have a Discord incoming webhook, set both lines below in an
-# untracked terraform.tfvars file. Never commit the webhook URL.
+# Runtime alerting is opt-in. Set this non-secret flag here if wanted, but never
+# put the webhook URL in a tfvars file. Export it before Terraform instead:
+#   export TF_VAR_discord_webhook_url="https://discord.com/api/webhooks/REPLACE_ME"
+# Increment TF_VAR_discord_webhook_secret_version whenever the URL rotates.
 # enable_runtime_alerting = true
-# discord_webhook_url     = "https://discord.com/api/webhooks/REPLACE_ME"
+# export TF_VAR_discord_webhook_secret_version=1

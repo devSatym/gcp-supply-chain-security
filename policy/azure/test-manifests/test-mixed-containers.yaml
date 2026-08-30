@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-azure-mixed-containers
+  labels:
+    test: azure-mixed
+spec:
+  restartPolicy: Never
+  initContainers:
+    - name: signer-init
+      image: example.azurecr.io/supply-chain-security/supply-chain-demo@sha256:4444444444444444444444444444444444444444444444444444444444444444
+      command: ["sh", "-c", "echo init done"]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+  containers:
+    - name: signed-app
+      image: example.azurecr.io/supply-chain-security/supply-chain-demo@sha256:5555555555555555555555555555555555555555555555555555555555555555
+      command: ["sh", "-c", "sleep 3600"]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+    - name: unsigned-sidecar
+      image: example.azurecr.io/supply-chain-security/supply-chain-demo@sha256:6666666666666666666666666666666666666666666666666666666666666666
+      command: ["sh", "-c", "sleep 3600"]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false

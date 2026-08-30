@@ -1,10 +1,11 @@
 terraform {
-  required_version = ">= 1.5.0"
+  # google_secret_manager_secret_version.secret_data_wo requires Terraform 1.11+.
+  required_version = ">= 1.11.0"
 
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = ">= 5.30.0, < 8.0.0"
+      version = ">= 7.0.0, < 8.0.0"
     }
     archive = {
       source  = "hashicorp/archive"

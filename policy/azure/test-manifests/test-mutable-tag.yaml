@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-azure-mutable-tag
+  labels:
+    test: azure-mutable-tag
+spec:
+  restartPolicy: Never
+  containers:
+    - name: tag-only-app
+      # A mutable tag reference violates the digest-only deployment contract:
+      # verifyImages has verifyDigest: true, so admission must reject it even
+      # if a signature existed for some manifest behind the tag.
+      image: example.azurecr.io/supply-chain-security/supply-chain-demo:latest
+      command: ["sh", "-c", "sleep 3600"]
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false

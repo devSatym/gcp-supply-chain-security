@@ -1,0 +1,3 @@
+{{- if .Values.policy }}
+{{ toYaml .Values.policy }}
+{{- end }}

@@ -8,15 +8,6 @@ This repository is the canonical project repository:
 
 It combines application/security and infrastructure/runtime-security components in one monorepo. The application/security layer remains at the repository root; the imported infrastructure component remains below `infrastructure/`.
 
-## Upstream attribution
-
-The two component areas were originally sourced from:
-
-- Application/security component: [`musaumakau/supply-chain-security`](https://github.com/musaumakau/supply-chain-security)
-- Infrastructure/runtime-security component: [`musaumakau/gcp-infrastructure-modules`](https://github.com/musaumakau/gcp-infrastructure-modules)
-
-Those repositories are retained as attribution and provenance context. This document does not claim that their current upstream commit IDs are identical to the current canonical monorepo commit IDs.
-
 ## Canonical merge topology
 
 The current history-combining merge is `6717e4491d3e8a2d0b6fd6044a673041f30d040c`.

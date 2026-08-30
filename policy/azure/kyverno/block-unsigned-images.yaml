@@ -1,0 +1,150 @@
+# Azure ACR template for the active Cosign + SBOM + provenance trust contract.
+#
+# Render this Terraform template before applying it with the values
+# `acr_login_server`, `application_repository`, and `cosign_repository`.
+# For example, use Terraform's `templatefile()` from the private-capable
+# production root; do not apply this checked-in source directly.
+#
+# The literal $${...} values are deliberately not valid OCI image references,
+# so an unrendered template cannot accidentally match a real workload image.
+# Do not apply the unrendered template: it would provide no admission coverage.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-unsigned-images-azure
+  annotations:
+    policies.kyverno.io/title: Block Unsigned and Unattested Azure Container Registry Images
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Template for AKS admission enforcement. Render the ACR variables before
+      applying. Matching application images must have a valid GitHub Actions
+      Cosign keyless signature, SPDX SBOM attestation, and SLSA provenance.
+    azure.supply-chain-security.io/template: "true"
+spec:
+  validationFailureAction: Enforce
+  background: true
+
+  rules:
+    - name: verify-image-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - kube-system
+                      - kyverno
+                      - argocd
+                      - crossplane-system
+                      - cert-manager
+      verifyImages:
+        - imageReferences:
+            - "${acr_login_server}/${application_repository}:*"
+            - "${acr_login_server}/${application_repository}@*"
+          # Signatures and attestations are written to a separately mutable ACR
+          # repository, while the application manifest is locked post-verify.
+          repository: "${cosign_repository}"
+          imageRegistryCredentials:
+            helpers:
+              - azure
+          attestors:
+            - entries:
+                - keyless:
+                    subject: "https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/azure-sign-attest.yml@refs/heads/main"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+          mutateDigest: false
+          verifyDigest: true
+          required: true
+
+    - name: verify-sbom-attestation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - kube-system
+                      - kyverno
+                      - argocd
+                      - crossplane-system
+                      - cert-manager
+      verifyImages:
+        - imageReferences:
+            - "${acr_login_server}/${application_repository}:*"
+            - "${acr_login_server}/${application_repository}@*"
+          repository: "${cosign_repository}"
+          imageRegistryCredentials:
+            helpers:
+              - azure
+          attestations:
+            - type: https://spdx.dev/Document
+              attestors:
+                - entries:
+                    - keyless:
+                        subject: "https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/azure-sign-attest.yml@refs/heads/main"
+                        issuer: "https://token.actions.githubusercontent.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
+          mutateDigest: false
+          verifyDigest: true
+          required: true
+
+    - name: verify-provenance-attestation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - kube-system
+                      - kyverno
+                      - argocd
+                      - crossplane-system
+                      - cert-manager
+      verifyImages:
+        - imageReferences:
+            - "${acr_login_server}/${application_repository}:*"
+            - "${acr_login_server}/${application_repository}@*"
+          repository: "${cosign_repository}"
+          imageRegistryCredentials:
+            helpers:
+              - azure
+          attestations:
+            - type: https://slsa.dev/provenance/v0.2
+              attestors:
+                - entries:
+                    - keyless:
+                        subject: "https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/azure-sign-attest.yml@refs/heads/main"
+                        issuer: "https://token.actions.githubusercontent.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    - key: "{{ invocation.configSource.entryPoint }}"
+                      operator: Equals
+                      value: ".github/workflows/azure-sign-attest.yml"
+                    - key: "{{ builder.id }}"
+                      operator: Equals
+                      value: "https://github.com/actions/runner"
+                    - key: "{{ invocation.configSource.uri }}"
+                      operator: Equals
+                      value: "git+https://github.com/devSatym/gcp-supply-chain-security@refs/heads/main"
+          mutateDigest: false
+          verifyDigest: true
+          required: true

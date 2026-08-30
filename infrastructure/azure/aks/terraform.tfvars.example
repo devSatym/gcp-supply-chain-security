@@ -1,0 +1,40 @@
+# Replace all example values with values output from the network module.
+resource_group_name = "rg-supply-chain-prod"
+location            = "centralindia"
+cluster_name        = "aks-supply-chain-prod"
+
+network_scope_id    = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-supply-chain-prod/providers/Microsoft.Network/virtualNetworks/vnet-supply-chain-prod"
+node_subnet_id      = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-supply-chain-prod/providers/Microsoft.Network/virtualNetworks/vnet-supply-chain-prod/subnets/snet-aks-nodes"
+api_server_subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-supply-chain-prod/providers/Microsoft.Network/virtualNetworks/vnet-supply-chain-prod/subnets/snet-aks-api-server"
+
+# Use Entra groups for access. Do not add personal user IDs directly.
+azure_rbac_admin_group_object_ids = ["00000000-0000-0000-0000-000000000000"]
+
+system_node_pool = {
+  name         = "system"
+  vm_size      = "Standard_D4s_v5"
+  min_size     = 2
+  max_size     = 5
+  desired_size = 2
+  zones        = ["1", "2", "3"]
+}
+
+user_node_pools = {
+  workloads = {
+    name         = "workload"
+    vm_size      = "Standard_D4s_v5"
+    min_size     = 1
+    max_size     = 10
+    desired_size = 2
+    zones        = ["1", "2", "3"]
+  }
+}
+
+environment   = "prod"
+owner         = "platform-security"
+project_label = "supply-chain-security"
+cost_center   = "security"
+
+tags = {
+  data_classification = "internal"
+}

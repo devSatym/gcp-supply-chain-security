@@ -1,0 +1,41 @@
+# Render these values with a verified ACR digest before Argo CD syncs them.
+# Literal placeholders intentionally cannot name a valid OCI image; see
+# ../README.md for the required render and promotion sequence.
+replicaCount: 2
+
+image:
+  repository: "${ACR_LOGIN_SERVER}/${ACR_APPLICATION_REPOSITORY}"
+  digest: "${IMAGE_DIGEST}"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+containerPort: 8000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+probes:
+  readiness:
+    initialDelaySeconds: 3
+    periodSeconds: 5
+  liveness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
