@@ -1,14 +1,21 @@
 name: Azure Private DAST
 
 on:
+  # zizmor: ignore[dangerous-triggers]
+  # Azure Deploy is main-only; this workflow checks out main explicitly and
+  # never evaluates workflow-run artifacts or code from the triggering run.
   workflow_run:
     workflows: ['Azure Deploy']
+    branches: [main]
     types: [completed]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  id-token: write
+concurrency:
+  group: azure-private-dast-main
+  cancel-in-progress: false
+
+# The DAST job receives the minimal Azure OIDC grant below.
+permissions: {}
 
 jobs:
   zap-baseline:
@@ -16,12 +23,18 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: [self-hosted, linux, x64, azure-private, azure-trusted]
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # OIDC-only Azure RBAC authentication to private AKS.
     env:
       ARM_USE_OIDC: 'true'
       ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
 
       - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef6 # v2.3.0
         with:

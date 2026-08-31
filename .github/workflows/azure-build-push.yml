@@ -32,25 +32,29 @@ on:
         description: Digest of the built image.
         value: ${{ jobs.build.outputs.digest }}
 
+# Every grant is declared on the one job that consumes it.
+permissions: {}
+
 env:
   ACR_NAME: ${{ inputs.acr_name }}
   ACR_LOGIN_SERVER: ${{ inputs.acr_login_server }}
   ACR_REPOSITORY: ${{ inputs.acr_repository }}
 
-permissions:
-  contents: read
-  id-token: write
-  security-events: write
-
 jobs:
   build:
     name: Build and Push Azure Image
     runs-on: [self-hosted, linux, x64, azure-private, azure-trusted]
+    permissions:
+      contents: read
+      id-token: write # Azure OIDC login and Cosign-compatible GitHub identity.
+      security-events: write # Upload the image Trivy SARIF report.
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Authenticate to Azure Container Registry
         if: inputs.push

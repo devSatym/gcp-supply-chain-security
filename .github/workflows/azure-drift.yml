@@ -5,15 +5,21 @@ on:
     - cron: '23 3 * * 1-5'
   workflow_dispatch:
 
-permissions:
-  contents: read
-  id-token: write
+concurrency:
+  group: azure-drift-main
+  cancel-in-progress: false
+
+# The read-only drift job receives the minimal Azure OIDC grant below.
+permissions: {}
 
 jobs:
   drift:
     name: Read-only private Azure drift plan
     runs-on: [self-hosted, linux, x64, azure-private, azure-trusted]
     timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write # OIDC-only read-only Terraform plan.
     env:
       ARM_USE_OIDC: 'true'
       ARM_USE_AZUREAD: 'true'
@@ -25,6 +31,8 @@ jobs:
       TF_INPUT: '0'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef6 # v2.3.0
         with:

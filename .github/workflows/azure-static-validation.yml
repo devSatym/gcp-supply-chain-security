@@ -32,16 +32,23 @@ on:
 
 # This is intentionally static-only: no Azure login, id-token permission,
 # registry access, deployment, or mutation is available from this workflow.
-permissions:
-  contents: read
+permissions: {}
+
+concurrency:
+  group: azure-static-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   yaml-and-policy:
     name: Azure YAML and Trust Contract
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -175,9 +182,13 @@ jobs:
   terraform:
     name: Azure Terraform Validation
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2

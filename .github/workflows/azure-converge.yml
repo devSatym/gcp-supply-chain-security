@@ -21,9 +21,8 @@ concurrency:
   group: azure-infrastructure-main
   cancel-in-progress: false
 
-permissions:
-  contents: read
-  id-token: write
+# The converge job receives the minimal Azure OIDC grant below.
+permissions: {}
 
 jobs:
   converge:
@@ -31,6 +30,9 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.inputs.confirm == 'apply')
     runs-on: [self-hosted, linux, x64, azure-private, azure-trusted]
     timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write # OIDC-only Azure Terraform and kubelogin access.
     env:
       ARM_USE_OIDC: 'true'
       ARM_USE_AZUREAD: 'true'
@@ -62,6 +64,8 @@ jobs:
 
       - name: Checkout trusted main
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Azure OIDC login for private AKS kubelogin
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef6 # v2.3.0
