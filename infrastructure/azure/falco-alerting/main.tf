@@ -121,6 +121,7 @@ resource "azurerm_linux_function_app" "discord_notifier" {
   storage_uses_managed_identity = true
   https_only                    = true
   zip_deploy_file               = data.archive_file.discord_notifier.output_path
+  virtual_network_subnet_id     = var.virtual_network_subnet_id
 
   identity {
     type = "SystemAssigned"

@@ -8,7 +8,11 @@ on:
       - 'app/**'
       - 'Dockerfile'
       - '.dockerignore'
-      - 'k8s/azure/**'
+      - 'k8s/azure/supply-chain-demo/Chart.yaml'
+      - 'k8s/azure/supply-chain-demo/values.yaml'
+      - 'k8s/azure/supply-chain-demo/values.release.yaml.example'
+      - 'k8s/azure/supply-chain-demo/values.release.yaml.template'
+      - 'k8s/azure/supply-chain-demo/templates/**'
       - 'policy/azure/**'
       - '.github/workflows/azure-*.yml'
       - '.github/actions/azure-auth/**'
@@ -19,7 +23,11 @@ on:
       - 'app/**'
       - 'Dockerfile'
       - '.dockerignore'
-      - 'k8s/azure/**'
+      - 'k8s/azure/supply-chain-demo/Chart.yaml'
+      - 'k8s/azure/supply-chain-demo/values.yaml'
+      - 'k8s/azure/supply-chain-demo/values.release.yaml.example'
+      - 'k8s/azure/supply-chain-demo/values.release.yaml.template'
+      - 'k8s/azure/supply-chain-demo/templates/**'
       - 'policy/azure/**'
       - '.github/workflows/azure-*.yml'
       - '.github/actions/azure-auth/**'
@@ -155,7 +163,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     env:
       ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
       ACR_APPLICATION_REPOSITORY: ${{ vars.ACR_REPOSITORY }}
@@ -165,25 +173,76 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Render digest-pinned release values
+        id: render
         run: |
-          set -euo pipefail
-          test "${IMAGE_DIGEST#sha256:}" != "${IMAGE_DIGEST}" || { echo "Digest must be sha256:..."; exit 1; }
-          envsubst < k8s/azure/supply-chain-demo/values.yaml > /tmp/values.release.yaml
+          set -Eeuo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "The verified output is not an exact sha256 digest" >&2
+            exit 1
+          }
+          [[ "$ACR_LOGIN_SERVER" =~ ^[A-Za-z0-9]+\.azurecr\.io$ ]] || {
+            echo "ACR_LOGIN_SERVER is not an Azure registry hostname" >&2
+            exit 1
+          }
+          [[ "$ACR_APPLICATION_REPOSITORY" =~ ^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*$ ]] || {
+            echo "ACR_APPLICATION_REPOSITORY is not a repository path" >&2
+            exit 1
+          }
+
+          rendered_values="${RUNNER_TEMP}/azure-values.release.yaml"
+          rendered_manifest="${RUNNER_TEMP}/supply-chain-azure-release.yaml"
+          envsubst '${ACR_LOGIN_SERVER} ${ACR_APPLICATION_REPOSITORY} ${IMAGE_DIGEST}' \
+            < k8s/azure/supply-chain-demo/values.release.yaml.template \
+            > "$rendered_values"
+          ! grep -Eq '\$\{|REPLACE_WITH|:latest' "$rendered_values"
+
           helm template supply-chain-demo k8s/azure/supply-chain-demo \
-            --values /tmp/values.release.yaml > /tmp/supply-chain-azure-release.yaml
-          grep -F -- "${ACR_LOGIN_SERVER}/${ACR_APPLICATION_REPOSITORY}@${IMAGE_DIGEST}" /tmp/supply-chain-azure-release.yaml
-          test -n "$(cat /tmp/supply-chain-azure-release.yaml)"
-          cp /tmp/values.release.yaml values.release.yaml
-          cp /tmp/supply-chain-azure-release.yaml supply-chain-azure-release.yaml
+            --values "$rendered_values" > "$rendered_manifest"
+          expected_image="${ACR_LOGIN_SERVER}/${ACR_APPLICATION_REPOSITORY}@${IMAGE_DIGEST}"
+          grep -F -- "$expected_image" "$rendered_manifest"
+          grep -F -- 'kind: Deployment' "$rendered_manifest"
+          grep -F -- 'kind: Service' "$rendered_manifest"
+
+          release_file="k8s/azure/supply-chain-demo/values.release.yaml"
+          cp "$rendered_values" "$release_file"
+          git diff --check
+          mapfile -t changed_files < <(git status --porcelain=v1 --untracked-files=all | sed -E 's/^.. //')
+          test "${#changed_files[@]}" -eq 1
+          test "${changed_files[0]}" = "$release_file"
+          {
+            echo "values_file=$rendered_values"
+            echo "manifest_file=$rendered_manifest"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Upload release rendering for evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: azure-release-${{ github.sha }}
           path: |
-            values.release.yaml
-            supply-chain-azure-release.yaml
+            ${{ runner.temp }}/azure-values.release.yaml
+            ${{ runner.temp }}/supply-chain-azure-release.yaml
           retention-days: 90
+
+      - name: Commit and push only the verified release values
+        run: |
+          set -Eeuo pipefail
+          release_file="k8s/azure/supply-chain-demo/values.release.yaml"
+          git add -- "$release_file"
+          git diff --cached --check
+          mapfile -t staged_files < <(git diff --cached --name-only)
+          test "${#staged_files[@]}" -eq 1
+          test "${staged_files[0]}" = "$release_file"
+
+          if git diff --cached --quiet; then
+            echo "Verified digest is already promoted; nothing to push."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(azure): promote verified image digest"
+          git push origin "HEAD:refs/heads/main"
 
       - name: Record promotion summary
         run: |
@@ -196,6 +255,5 @@ jobs:
             echo "| Verified | signature + SPDX SBOM + SLSA provenance (azure-verify) |"
             echo "| Locked | write/delete disabled on the verified manifest |"
             echo ""
-            echo "The values.release.yaml artifact is ready for an owner-reviewed"
-            echo "promotion change consumed by the private Argo CD Application."
+            echo "The verified release values were promoted to main for private Argo CD reconciliation."
           } >> "$GITHUB_STEP_SUMMARY"

@@ -42,3 +42,18 @@ output "key_vault_uri" {
   description = "Key Vault URI holding the Discord webhook."
   value       = azurerm_key_vault.falco.vault_uri
 }
+
+output "function_storage_blob_endpoint" {
+  description = "Function host storage Blob endpoint for private connectivity checks."
+  value       = azurerm_storage_account.function.primary_blob_endpoint
+}
+
+output "function_storage_queue_endpoint" {
+  description = "Function host storage Queue endpoint for private connectivity checks."
+  value       = azurerm_storage_account.function.primary_queue_endpoint
+}
+
+output "function_storage_table_endpoint" {
+  description = "Function host storage Table endpoint for private connectivity checks."
+  value       = azurerm_storage_account.function.primary_table_endpoint
+}

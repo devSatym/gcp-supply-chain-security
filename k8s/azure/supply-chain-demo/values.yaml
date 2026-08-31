@@ -1,6 +1,9 @@
-# Render these values with a verified ACR digest before Argo CD syncs them.
-# Literal placeholders intentionally cannot name a valid OCI image; see
-# ../README.md for the required render and promotion sequence.
+# Argo CD can safely install this chart before a release exists. The trusted
+# main promotion job supplies values.release.yaml and enables the workload only
+# after the image has been signed, attested, verified, and locked.
+workload:
+  enabled: false
+
 replicaCount: 2
 
 image:

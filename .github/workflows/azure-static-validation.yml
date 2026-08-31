@@ -6,10 +6,12 @@ on:
       - main
     paths:
       - 'AGENT.md'
+      - 'AGENTS.md'
       - 'infrastructure/azure/**'
       - 'policy/azure/**'
       - 'k8s/azure/**'
       - 'argocd/supply-chain-azure-demo-app.yaml'
+      - 'scripts/azure/**'
       - '.github/actions/azure-auth/**'
       - '.github/workflows/azure-*.yml'
   push:
@@ -18,10 +20,12 @@ on:
       - main
     paths:
       - 'AGENT.md'
+      - 'AGENTS.md'
       - 'infrastructure/azure/**'
       - 'policy/azure/**'
       - 'k8s/azure/**'
       - 'argocd/supply-chain-azure-demo-app.yaml'
+      - 'scripts/azure/**'
       - '.github/actions/azure-auth/**'
       - '.github/workflows/azure-*.yml'
   workflow_dispatch:
@@ -60,6 +64,7 @@ jobs:
               *Path("policy/azure").rglob("*.yaml"),
               Path("k8s/azure/supply-chain-demo/values.yaml"),
               Path("k8s/azure/supply-chain-demo/values.release.yaml.example"),
+              Path("k8s/azure/supply-chain-demo/values.release.yaml.template"),
               Path("infrastructure/azure/kubernetes-addons/argocd-values.yaml"),
               Path("argocd/supply-chain-azure-demo-app.yaml"),
           ]
@@ -126,26 +131,40 @@ jobs:
       - name: Check Azure GitOps promotion contract
         run: python3 policy/azure/tests/check_azure_gitops_contract.py
 
+      - name: Check Azure one-command automation contract
+        run: python3 policy/azure/tests/check_azure_automation_contract.py
+
+      - name: Check one-command wrapper without Azure access
+        run: |
+          bash -n scripts/azure/apply-once.sh
+          scripts/azure/apply-once.sh --dry-run --mode core
+
       - name: Lint and render Azure Helm chart
         run: |
           helm lint k8s/azure/supply-chain-demo
-          helm template supply-chain-demo k8s/azure/supply-chain-demo > /tmp/supply-chain-azure.yaml
+          helm template supply-chain-demo k8s/azure/supply-chain-demo > /tmp/supply-chain-azure-base.yaml
+          helm template supply-chain-demo k8s/azure/supply-chain-demo \
+            --values k8s/azure/supply-chain-demo/values.release.yaml.example \
+            > /tmp/supply-chain-azure-release.yaml
           # kubectl apply --dry-run=client requires live API discovery, which
           # cluster-less CI runners cannot provide; assert the render offline.
           python3 - <<'PY'
           from pathlib import Path
           import yaml
 
-          docs = [d for d in yaml.safe_load_all(Path("/tmp/supply-chain-azure.yaml").read_text()) if d]
-          kinds = {d["kind"] for d in docs}
-          assert {"Deployment", "Service"} <= kinds, f"unexpected rendered kinds: {sorted(kinds)}"
-          for d in docs:
+          base = [d for d in yaml.safe_load_all(Path("/tmp/supply-chain-azure-base.yaml").read_text()) if d]
+          release = [d for d in yaml.safe_load_all(Path("/tmp/supply-chain-azure-release.yaml").read_text()) if d]
+          base_kinds = {d["kind"] for d in base}
+          release_kinds = {d["kind"] for d in release}
+          assert not base_kinds & {"Deployment", "Service"}, f"base chart is not inert: {sorted(base_kinds)}"
+          assert {"Deployment", "Service"} <= release_kinds, f"release chart is missing workload: {sorted(release_kinds)}"
+          for d in release:
               if d["kind"] != "Deployment":
                   continue
               for c in d["spec"]["template"]["spec"]["containers"]:
                   image = c["image"]
-                  assert "@${IMAGE_DIGEST}" in image, f"rendered image is not digest-pinned: {image}"
-          print(f"OK rendered {len(docs)} documents; kinds={sorted(kinds)}; deployment image is digest-pinned")
+                  assert "@sha256:" in image, f"rendered image is not digest-pinned: {image}"
+          print(f"OK base kinds={sorted(base_kinds)}; release kinds={sorted(release_kinds)}")
           PY
 
   terraform:
@@ -164,6 +183,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          tmp_dir="$(mktemp -d)"
+          cp -a infrastructure "$tmp_dir/infrastructure"
+          cp -a policy "$tmp_dir/policy"
+          cp -a argocd "$tmp_dir/argocd"
           directories=(
             infrastructure/azure/bootstrap-state
             infrastructure/azure/supply-chain
@@ -176,15 +199,16 @@ jobs:
           )
           found=0
           for directory in "${directories[@]}"; do
-            if [[ ! -d "$directory" ]] || [[ -z "$(find "$directory" -maxdepth 1 -name '*.tf' -print -quit)" ]]; then
+            terraform_directory="$tmp_dir/$directory"
+            if [[ ! -d "$terraform_directory" ]] || [[ -z "$(find "$terraform_directory" -maxdepth 1 -name '*.tf' -print -quit)" ]]; then
               echo "SKIP: $directory has not been added yet"
               continue
             fi
             found=1
             echo "==> Checking $directory"
-            terraform fmt -check -recursive "$directory"
-            terraform -chdir="$directory" init -backend=false -input=false
-            terraform -chdir="$directory" validate -no-color
+            terraform fmt -check -recursive "$terraform_directory"
+            terraform -chdir="$terraform_directory" init -backend=false -input=false
+            terraform -chdir="$terraform_directory" validate -no-color
           done
           if [[ "$found" -eq 0 ]]; then
             echo "No Azure Terraform directory exists yet; static workflow remains intentionally green."

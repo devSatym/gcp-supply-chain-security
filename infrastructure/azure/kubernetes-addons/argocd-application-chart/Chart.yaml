@@ -1,0 +1,5 @@
+apiVersion: v2
+name: argocd-application
+description: Package the reviewed Azure Argo Application after Argo CD CRDs exist
+type: application
+version: 0.1.0

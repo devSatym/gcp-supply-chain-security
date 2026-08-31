@@ -13,11 +13,20 @@ GitHub Actions OIDC -> Azure user-assigned managed identity -> ACR
   -> Falco -> Event Hubs -> Azure Functions -> Key Vault -> Discord
 ```
 
-The private Azure foundation, admission/runtime controls, Argo CD foundation,
-and AKS maintenance parity are live-validated from the private jump VM on
-2026-08-30. The trusted image release, reviewed GitOps promotion, optional
-Discord alerting, flow-log opt-in, and private ACR closure still require the
-external inputs listed in the validation checklist.
+The repository now has a single idempotent convergence entry point at
+`scripts/azure/apply-once.sh`. It requires the one-time remote Blob backend and
+a private-network-capable applying host; it never creates local production
+state. The historical 2026-08-30 live evidence is retained, but the current
+subscription must be revalidated before claiming a fresh deployment.
+
+```bash
+scripts/azure/apply-once.sh --mode core
+```
+
+Use `--mode private` only with an owner-approved private GitHub runner, because
+that mode closes ACR and optional alerting service public access after probes.
+The first trusted main release then creates the workload through verified
+digest promotion and automatic Argo reconciliation.
 
 - [Architecture decisions](01-architecture-decisions.md)
 - [Setup and bootstrap](02-setup.md)

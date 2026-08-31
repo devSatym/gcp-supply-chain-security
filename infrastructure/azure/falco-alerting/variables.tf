@@ -88,3 +88,17 @@ variable "public_network_access_enabled" {
   type        = bool
   default     = true
 }
+
+variable "virtual_network_subnet_id" {
+  description = "Delegated subnet ID used for Azure Function VNet integration. Required when public network access is disabled."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+check "private_function_networking" {
+  assert {
+    condition     = var.public_network_access_enabled || (var.virtual_network_subnet_id != null && trimspace(var.virtual_network_subnet_id) != "")
+    error_message = "virtual_network_subnet_id is required when alerting service public network access is disabled."
+  }
+}

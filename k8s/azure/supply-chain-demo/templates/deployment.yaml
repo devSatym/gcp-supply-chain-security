@@ -1,3 +1,4 @@
+{{- if .Values.workload.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -44,3 +45,4 @@ spec:
               port: {{ .Values.containerPort }}
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+{{- end }}

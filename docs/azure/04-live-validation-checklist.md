@@ -10,15 +10,18 @@ Status vocabulary:
 - `LIVE_VALIDATED` — performed against real Azure with Azure-only evidence
   recorded beside the item.
 
-Core items marked below are `LIVE_VALIDATED` from the private jump VM on
-2026-08-30. The release, optional alerting, flow-log, and private-closure
-sections remain `LIVE_VALIDATION_PENDING` or `BLOCKED_BY_EXTERNAL_INPUT`.
-Do not reuse GCP evidence as Azure evidence.
+Core items marked below are historical `LIVE_VALIDATED` evidence from the
+private jump VM on 2026-08-30. On 2026-08-31, the authenticated subscription
+reported both the workload and state resource groups as absent, and this host
+could not resolve the previously configured private Blob endpoint. The live
+environment must therefore be reprovisioned or restored and revalidated; no
+fresh deployment is claimed here. Do not reuse GCP evidence as Azure evidence.
 
 ## Current live status
 
 | Area | Status | Evidence |
 | --- | --- | --- |
+| Current subscription/resource availability | `LIVE_VALIDATION_PENDING` | 2026-08-31 `az group show` reported the configured workload and state groups as not found; a private runner/host is still required. |
 | Terraform state private access | `LIVE_VALIDATED` | VM managed identity read the remote state through Blob Private Link; shared keys and public state access are disabled. |
 | Private AKS | `LIVE_VALIDATED` | AKS is `Succeeded`, private, and the one-node pool is Ready. |
 | AKS maintenance parity | `LIVE_VALIDATED` | Both managed maintenance schedules are present with a daily 03:00 UTC window; node-image upgrades remain selected. |
@@ -26,10 +29,10 @@ Do not reuse GCP evidence as Azure evidence.
 | Falco runtime sensor + custom rule | `LIVE_VALIDATED` | Falco daemonset and metadata collector are Ready; the Azure custom shell-spawn rule is present in the release values. |
 | Argo CD foundation | `LIVE_VALIDATED` | Pinned chart is installed privately; server and supporting services are Running with ClusterIP services and no ingress. |
 | Mutable application tag rejection | `LIVE_VALIDATED` | A server-side dry-run Pod using `supply-chain-demo:latest` was denied by all three trust rules from the private jump VM. |
-| Trusted Azure image release | `BLOCKED_BY_EXTERNAL_INPUT` | Azure workflows are local-only; they must be available on trusted `refs/heads/main`. |
+| Trusted Azure image release | `LIVE_VALIDATION_PENDING` | Workflow and GitHub variables are configured in the owner repository, but a fresh main-branch run must follow infrastructure restoration. |
 | Demo workload | `LIVE_VALIDATION_PENDING` | Requires a verified and locked ACR digest. |
 | Discord alerting | `BLOCKED_BY_EXTERNAL_INPUT` | No webhook is configured; alerting remains intentionally disabled. |
-| Private ACR closure | `BLOCKED_BY_EXTERNAL_INPUT` | Requires a private GitHub runner with VNet/private-DNS access. |
+| Private ACR closure | `BLOCKED_BY_EXTERNAL_INPUT` | Requires a private GitHub runner with VNet/private-DNS access and restored Azure resources. |
 
 ## Required external inputs (blockers — never invent them)
 

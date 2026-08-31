@@ -16,11 +16,14 @@ azure_rbac_admin_group_object_ids = [
 name_prefix         = "supplychain-prod"
 acr_name            = "REPLACE_WITH_UNIQUE_ACR_NAME"
 
-# Stage gates. Apply in the documented order (see README.md).
-enable_workload_addons = false
-enable_runtime_alerting = false
-enable_private_endpoints = false
-enable_flow_logs = false
+# The apply-once runner manages these gates. Keep the example safe for the
+# first foundation convergence; do not close public service access until the
+# runner has created and probed every required Private Endpoint.
+enable_workload_addons       = false
+enable_runtime_alerting      = false
+enable_private_endpoints     = false
+disable_public_network_access = false
+enable_flow_logs             = false
 # Required only when enable_flow_logs = true; supply an owner-approved,
 # globally unique lowercase StorageV2 name outside source control.
 # flow_logs_storage_account_name = "REPLACE_WITH_UNIQUE_FLOW_LOG_STORAGE_NAME"

@@ -19,6 +19,9 @@ Monitor/managed metrics.
 
 Argo CD is enabled by the install_argocd input and uses argocd-values.yaml:
 its server is ClusterIP-only, ingress and Dex are disabled, and the controller
-replicas are sized for the constrained demo cluster. The Argo Application is a
-separate reviewed manifest and consumes values.release.yaml; the checked-in
-base values are intentionally not syncable.
+replicas are sized for the constrained demo cluster. The module then packages
+the single reviewed `argocd/supply-chain-azure-demo-app.yaml` manifest as a
+local Helm release after Argo's CRDs are installed. The Application tolerates
+an absent `values.release.yaml`, automatically prunes and self-heals once the
+trusted main promotion job commits the verified digest, and never exposes a
+public Argo service.

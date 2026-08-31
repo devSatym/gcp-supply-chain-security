@@ -25,48 +25,44 @@ az provider register --namespace Microsoft.Web
 az provider register --namespace Microsoft.OperationalInsights
 ```
 
-## 1. Bootstrap remote Terraform state
+## 1. Bootstrap remote Terraform state once
 
 The Azure Blob backend must exist before the production root initializes. Use
-the isolated `infrastructure/azure/bootstrap-state` root with a local backend
-first. Its output supplies the storage account, resource group, and container
-for the production backend.
+the isolated `infrastructure/azure/bootstrap-state` root with an ephemeral
+local backend outside the repository, or use an existing approved bootstrap
+procedure. That bootstrap exception is unavoidable because Terraform cannot
+initialize a backend that it is creating in the same run.
+
+The production root must then receive the resulting backend through
+`--backend-config=/path/to/backend.hcl` or the four `TFSTATE_*` variables. The
+one-command runner refuses to initialize a local production backend, prints no
+backend values, and stores its temporary Terraform data outside the repository.
+
+## 2. Run one-command convergence
+
+Keep the owner-supplied non-secret production var-file uncommitted and keep the
+Discord URL out of every file. From a host with private AKS DNS and network
+access, run:
 
 ```bash
-cd infrastructure/azure/bootstrap-state
-terraform init -backend=false
-terraform plan -out bootstrap.tfplan
-terraform apply bootstrap.tfplan
+scripts/azure/apply-once.sh --mode core
 ```
 
-The identity running Terraform needs `Storage Blob Data Contributor` on that
-state storage account. Use Microsoft Entra authentication; do not enable or
-export a Storage Account access key for Terraform state.
-
-## 2. Configure the production root
-
-Copy the Azure example values and fill in non-secret subscription, tenant,
-network, owner, and cost inputs. Keep the Discord URL out of every file.
+The runner uses saved plan/apply pairs for the foundation and convergence. It
+probes the private AKS API before invoking Helm/Kubernetes providers. Use the
+private mode only after an owner-approved private GitHub runner is ready:
 
 ```bash
-cd ../environments/prod
-cp terraform.tfvars.example terraform.tfvars
-terraform init \
-  -backend-config='resource_group_name=REPLACE_STATE_RESOURCE_GROUP' \
-  -backend-config='storage_account_name=REPLACE_STATE_STORAGE_ACCOUNT' \
-  -backend-config='container_name=tfstate' \
-  -backend-config='key=azure-supply-chain-security/prod.tfstate' \
-  -backend-config='use_azuread_auth=true'
-terraform plan
+PRIVATE_GITHUB_RUNNER_READY=true scripts/azure/apply-once.sh --mode private
 ```
 
-Use the staged sequence documented by the root README: provisioning network and
-AKS first, then run Helm/Kubernetes provider work from the private-network
-operator host.
+Private mode creates service endpoints, probes private DNS and port 443, and
+only then disables public access for ACR and enabled alerting services. It
+never makes the AKS API public and never uses `az aks get-credentials`.
 
 ## 3. Configure GitHub only after Terraform outputs exist
 
-Set repository variables, not secrets:
+Set repository variables, not secrets, from the non-secret Terraform outputs:
 
 | Variable | Source |
 |---|---|
@@ -90,6 +86,8 @@ export TF_VAR_discord_webhook_url='https://discord.com/api/webhooks/REPLACE_ME'
 export TF_VAR_discord_webhook_secret_version=1
 ```
 
-Set `enable_runtime_alerting = true` in the production variables, apply from a
-controlled host, then follow the live validation checklist. Increment the
-non-secret secret-version value whenever the webhook rotates.
+Set `enable_runtime_alerting = true` in the production variables and export the
+webhook only for the runner invocation. Increment the non-secret
+`TF_VAR_discord_webhook_secret_version` value whenever the webhook rotates.
+The value is sent to the write-only Key Vault field and is never placed in a
+tfvars file, output, log, or generated artifact.

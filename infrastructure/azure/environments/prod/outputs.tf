@@ -55,7 +55,7 @@ output "kyverno_client_id" {
 
 output "tenant_id" {
   description = "GitHub variable AZURE_TENANT_ID."
-  value       = module.supply_chain.github_ci_federated_identity_credential_id != null ? data.azurerm_client_config.current.tenant_id : data.azurerm_client_config.current.tenant_id
+  value       = data.azurerm_client_config.current.tenant_id
 }
 
 output "subscription_id" {
@@ -79,13 +79,63 @@ output "flow_logs_storage_account_id" {
 }
 
 output "registry_public_access_enabled" {
-  description = "False after enable_private_endpoints has been applied; verify before promoting releases."
-  value       = module.supply_chain.acr_id != null ? !var.enable_private_endpoints : !var.enable_private_endpoints
+  description = "Whether authenticated public network access remains enabled for ACR."
+  value       = !var.disable_public_network_access
+}
+
+output "private_endpoint_subnet_id" {
+  description = "Non-secret subnet ID reserved for Azure Private Endpoints."
+  value       = module.network.private_endpoints_subnet_id
+}
+
+output "functions_subnet_id" {
+  description = "Non-secret delegated subnet ID used by the optional Function VNet integration."
+  value       = module.network.functions_subnet_id
+}
+
+output "private_dns_zone_ids" {
+  description = "Non-secret Private Link DNS zone IDs used by the endpoint probes."
+  value       = module.network.private_dns_zone_ids
+}
+
+output "private_endpoint_creation_enabled" {
+  description = "Whether this state includes the Private Endpoint resources."
+  value       = var.enable_private_endpoints
+}
+
+output "public_network_access_closure_enabled" {
+  description = "Whether public service access has been closed after endpoint probing."
+  value       = var.disable_public_network_access
+}
+
+output "acr_name" {
+  description = "ACR name used by private endpoint and release preflight checks."
+  value       = module.supply_chain.acr_name
 }
 
 output "eventhub_namespace_fqdn" {
   description = "Event Hubs namespace FQDN when runtime alerting is enabled; otherwise null."
   value       = try(module.falco_alerting[0].eventhub_namespace_fqdn, null)
+}
+
+output "key_vault_uri" {
+  description = "Key Vault URI for private DNS/connectivity checks when alerting is enabled."
+  value       = try(module.falco_alerting[0].key_vault_uri, null)
+}
+
+output "function_storage_blob_endpoint" {
+  description = "Function host storage Blob endpoint for private connectivity checks."
+  value       = try(module.falco_alerting[0].function_storage_blob_endpoint, null)
+}
+
+output "function_storage_queue_endpoint" {
+  description = "Function host storage Queue endpoint for private connectivity checks."
+  value       = try(module.falco_alerting[0].function_storage_queue_endpoint, null)
+}
+
+output "function_storage_table_endpoint" {
+  description = "Function host storage Table endpoint for private connectivity checks."
+  value       = try(module.falco_alerting[0].function_storage_table_endpoint, null)
 }
 
 output "falco_function_name" {
