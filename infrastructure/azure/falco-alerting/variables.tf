@@ -51,6 +51,18 @@ variable "discord_webhook_secret_version" {
   }
 }
 
+variable "discord_webhook_secret_expiration_date" {
+  description = "UTC expiration for the write-only Discord webhook secret, in YYYY-MM-DDTHH:MM:SSZ format. It is required by the production root whenever runtime alerting is enabled."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.discord_webhook_secret_expiration_date == null || can(formatdate("YYYY-MM-DD'T'hh:mm:ss'Z'", var.discord_webhook_secret_expiration_date))
+    error_message = "discord_webhook_secret_expiration_date must be a UTC timestamp such as 2030-01-01T00:00:00Z."
+  }
+}
+
 variable "eventhub_name" {
   description = "Name of the Event Hub that receives Falco alerts."
   type        = string
@@ -89,6 +101,17 @@ variable "public_network_access_enabled" {
   default     = true
 }
 
+variable "trusted_public_ip_ranges" {
+  description = "Public Terraform-runner CIDRs allowed to set the Discord secret while Key Vault public access is enabled. Leave empty only when private endpoint access is used."
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for cidr in var.trusted_public_ip_ranges : can(cidrnetmask(cidr))])
+    error_message = "trusted_public_ip_ranges must contain valid CIDRs."
+  }
+}
+
 variable "virtual_network_subnet_id" {
   description = "Delegated subnet ID used for Azure Function VNet integration. Required when public network access is disabled."
   type        = string
@@ -100,5 +123,12 @@ check "private_function_networking" {
   assert {
     condition     = var.public_network_access_enabled || (var.virtual_network_subnet_id != null && trimspace(var.virtual_network_subnet_id) != "")
     error_message = "virtual_network_subnet_id is required when alerting service public network access is disabled."
+  }
+}
+
+check "public_key_vault_writer_access" {
+  assert {
+    condition     = !var.public_network_access_enabled || length(var.trusted_public_ip_ranges) > 0
+    error_message = "trusted_public_ip_ranges is required while Key Vault public access is enabled so Terraform can set the write-only Discord secret without opening the vault broadly."
   }
 }

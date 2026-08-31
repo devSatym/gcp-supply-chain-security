@@ -47,10 +47,10 @@ resource "azurerm_storage_account" "state" {
   }
 
   # When public connectivity is enabled, the account remains firewall-denied
-  # except for declared runner egress ranges and Azure trusted services.
+  # except for declared runner egress ranges and subnets.
   network_rules {
     default_action = "Deny"
-    bypass         = ["AzureServices"]
+    bypass         = []
     # Azure storage firewall ip_rules reject /32 (and /31) prefixes; a bare
     # IPv4 address means exactly that host. Keep single-host entries usable.
     ip_rules                   = [for cidr in var.allowed_ip_ranges : trimsuffix(cidr, "/32")]
@@ -64,6 +64,18 @@ resource "azurerm_storage_account" "state" {
       condition     = !var.public_network_access_enabled || length(var.allowed_ip_ranges) > 0 || length(var.allowed_subnet_ids) > 0
       error_message = "When public_network_access_enabled is true, declare at least one trusted runner egress IP range or subnet. The state account must not be broadly reachable."
     }
+  }
+}
+
+resource "azurerm_storage_account_queue_properties" "state" {
+  storage_account_id = azurerm_storage_account.state.id
+
+  logging {
+    version               = "1.0"
+    delete                = true
+    read                  = true
+    write                 = true
+    retention_policy_days = 30
   }
 }
 

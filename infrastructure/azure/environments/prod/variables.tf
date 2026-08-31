@@ -339,6 +339,29 @@ variable "discord_webhook_secret_version" {
   }
 }
 
+variable "discord_webhook_secret_expiration_date" {
+  description = "Owner-supplied UTC expiration for the write-only Discord webhook secret. Required whenever runtime alerting is enabled."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.discord_webhook_secret_expiration_date == null || can(formatdate("YYYY-MM-DD'T'hh:mm:ss'Z'", var.discord_webhook_secret_expiration_date))
+    error_message = "discord_webhook_secret_expiration_date must be a UTC timestamp such as 2030-01-01T00:00:00Z."
+  }
+}
+
+variable "alerting_trusted_public_ip_ranges" {
+  description = "Owner-supplied Terraform-runner CIDRs that may write the Discord webhook while alerting services retain public access. Leave empty only for private-endpoint deployment."
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for cidr in var.alerting_trusted_public_ip_ranges : can(cidrnetmask(cidr))])
+    error_message = "alerting_trusted_public_ip_ranges must contain valid CIDRs."
+  }
+}
+
 variable "owner" {
   description = "Resource owner/team governance tag."
   type        = string

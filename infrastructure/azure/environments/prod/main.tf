@@ -15,6 +15,17 @@ check "private_service_closure" {
   }
 }
 
+check "runtime_alerting_secret_lifecycle" {
+  assert {
+    condition = !var.enable_runtime_alerting || (
+      var.discord_webhook_url != "" &&
+      var.discord_webhook_secret_expiration_date != null &&
+      trimspace(var.discord_webhook_secret_expiration_date) != ""
+    )
+    error_message = "enable_runtime_alerting requires TF_VAR_discord_webhook_url and an owner-supplied discord_webhook_secret_expiration_date."
+  }
+}
+
 locals {
   tags = merge(
     var.tags,
@@ -137,10 +148,12 @@ module "falco_alerting" {
   location            = module.network.location
   name_prefix         = var.alerting_name_prefix
 
-  aks_oidc_issuer_url            = module.aks.oidc_issuer_url
-  discord_webhook_url            = var.discord_webhook_url
-  discord_webhook_secret_version = var.discord_webhook_secret_version
-  virtual_network_subnet_id      = module.network.functions_subnet_id
+  aks_oidc_issuer_url                    = module.aks.oidc_issuer_url
+  discord_webhook_url                    = var.discord_webhook_url
+  discord_webhook_secret_version         = var.discord_webhook_secret_version
+  discord_webhook_secret_expiration_date = var.discord_webhook_secret_expiration_date
+  trusted_public_ip_ranges               = var.alerting_trusted_public_ip_ranges
+  virtual_network_subnet_id              = module.network.functions_subnet_id
 
   # This is flipped only by the final closure apply, after the endpoints are
   # created and the Function's private storage path has been probed.

@@ -28,6 +28,12 @@ enable_flow_logs             = false
 # globally unique lowercase StorageV2 name outside source control.
 # flow_logs_storage_account_name = "REPLACE_WITH_UNIQUE_FLOW_LOG_STORAGE_NAME"
 
+# Required only when enable_runtime_alerting = true. Keep the webhook itself in
+# TF_VAR_discord_webhook_url; provide a rotating non-secret version counter and
+# a future UTC expiration plus the CIDRs that may write it during public mode.
+# discord_webhook_secret_expiration_date = "2030-01-01T00:00:00Z"
+# alerting_trusted_public_ip_ranges       = ["203.0.113.10/32"]
+
 # The Azure parity window is daily at 03:00 UTC, matching the active GCP
 # maintenance policy. Override only with an owner-reviewed operations choice.
 node_os_upgrade_channel = "NodeImage"
