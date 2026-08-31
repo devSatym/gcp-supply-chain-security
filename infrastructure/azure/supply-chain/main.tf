@@ -234,12 +234,11 @@ resource "azurerm_role_assignment" "github_terraform_state_reader" {
   # Pin the assignment UUID when adopting an existing remote-state bootstrap
   # grant. Azure role-assignment names are immutable, so leaving this unset
   # would make Terraform replace an otherwise identical least-privilege grant.
-  name                             = var.terraform_state_reader_assignment_name
-  scope                            = var.terraform_state_storage_account_id
-  role_definition_name             = "Reader"
-  principal_id                     = azurerm_user_assigned_identity.github_terraform[0].principal_id
-  principal_type                   = "ServicePrincipal"
-  skip_service_principal_aad_check = true
+  name                 = var.terraform_state_reader_assignment_name
+  scope                = var.terraform_state_storage_account_id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_user_assigned_identity.github_terraform[0].principal_id
+  principal_type       = "ServicePrincipal"
 
   lifecycle {
     # Azure role-assignment descriptions cannot be updated. The bootstrap grant
