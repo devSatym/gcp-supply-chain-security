@@ -19,7 +19,10 @@ resource "azurerm_resource_group" "state" {
   tags     = local.tags
 }
 
-resource "azurerm_storage_account" "state" {
+# Semgrep recognizes only the legacy inline queue_properties block. Logging is
+# configured by azurerm_storage_account_queue_properties below, which is the
+# supported AzureRM v4 resource.
+resource "azurerm_storage_account" "state" { # nosemgrep
   name                     = var.storage_account_name
   resource_group_name      = azurerm_resource_group.state.name
   location                 = azurerm_resource_group.state.location

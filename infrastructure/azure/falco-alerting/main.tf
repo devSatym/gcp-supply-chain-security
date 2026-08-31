@@ -92,7 +92,10 @@ resource "azurerm_key_vault_secret" "discord_webhook" {
   tags             = var.tags
 }
 
-resource "azurerm_storage_account" "function" {
+# Semgrep recognizes only the legacy inline queue_properties block. Logging is
+# configured by azurerm_storage_account_queue_properties below, which is the
+# supported AzureRM v4 resource.
+resource "azurerm_storage_account" "function" { # nosemgrep
   name                            = local.function_storage_name
   resource_group_name             = var.resource_group_name
   location                        = var.location

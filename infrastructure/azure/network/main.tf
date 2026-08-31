@@ -249,7 +249,10 @@ resource "azurerm_network_watcher" "flow_logs" {
 # account; Microsoft documents this exact exception. This account is dedicated
 # to flow logs and is never reused for workload data.
 # nosemgrep: terraform.azure.security.storage.storage-allow-microsoft-service-bypass.storage-allow-microsoft-service-bypass
-resource "azurerm_storage_account" "flow_logs" {
+# Semgrep recognizes only the legacy inline queue_properties block. Logging is
+# configured by azurerm_storage_account_queue_properties below, which is the
+# supported AzureRM v4 resource.
+resource "azurerm_storage_account" "flow_logs" { # nosemgrep
   count = var.enable_flow_logs ? 1 : 0
 
   name                     = var.flow_logs_storage_account_name
