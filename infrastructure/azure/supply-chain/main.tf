@@ -240,6 +240,13 @@ resource "azurerm_role_assignment" "github_terraform_state_reader" {
   principal_id                     = azurerm_user_assigned_identity.github_terraform[0].principal_id
   principal_type                   = "ServicePrincipal"
   skip_service_principal_aad_check = true
+
+  lifecycle {
+    # Azure role-assignment descriptions cannot be updated. The bootstrap grant
+    # is equivalent in scope, principal, and role, so retain its Azure-managed
+    # description rather than replacing a live state-access grant.
+    ignore_changes = [description]
+  }
 }
 
 # Kyverno's admission controller is the only Kubernetes ServiceAccount trusted
