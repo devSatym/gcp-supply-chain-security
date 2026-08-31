@@ -71,7 +71,15 @@ resource "azurerm_key_vault" "falco" {
   purge_protection_enabled      = true
   soft_delete_retention_days    = 7
   public_network_access_enabled = var.public_network_access_enabled
-  tags                          = var.tags
+
+  network_acls {
+    bypass                     = "None"
+    default_action             = "Deny"
+    ip_rules                   = var.trusted_public_ip_ranges
+    virtual_network_subnet_ids = var.virtual_network_subnet_id == null ? [] : [var.virtual_network_subnet_id]
+  }
+
+  tags = var.tags
 }
 
 resource "azurerm_key_vault_secret" "discord_webhook" {
@@ -80,6 +88,7 @@ resource "azurerm_key_vault_secret" "discord_webhook" {
   value_wo         = var.discord_webhook_url
   value_wo_version = var.discord_webhook_secret_version
   content_type     = "Discord webhook URL"
+  expiration_date  = var.discord_webhook_secret_expiration_date
   tags             = var.tags
 }
 
@@ -95,6 +104,18 @@ resource "azurerm_storage_account" "function" {
   shared_access_key_enabled       = false
   public_network_access_enabled   = var.public_network_access_enabled
   tags                            = var.tags
+}
+
+resource "azurerm_storage_account_queue_properties" "function" {
+  storage_account_id = azurerm_storage_account.function.id
+
+  logging {
+    version               = "1.0"
+    delete                = true
+    read                  = true
+    write                 = true
+    retention_policy_days = 30
+  }
 }
 
 resource "azurerm_service_plan" "function" {

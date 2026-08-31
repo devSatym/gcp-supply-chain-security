@@ -244,6 +244,11 @@ resource "azurerm_network_watcher" "flow_logs" {
   tags                = local.tags
 }
 
+# Semgrep's generic rule rejects the trusted-services exception. Azure Network
+# Watcher requires it to write VNet flow logs to a firewall-protected storage
+# account; Microsoft documents this exact exception. This account is dedicated
+# to flow logs and is never reused for workload data.
+# nosemgrep: terraform.azure.security.storage.storage-allow-microsoft-service-bypass.storage-allow-microsoft-service-bypass
 resource "azurerm_storage_account" "flow_logs" {
   count = var.enable_flow_logs ? 1 : 0
 
@@ -273,6 +278,20 @@ resource "azurerm_storage_account" "flow_logs" {
       condition     = var.flow_logs_storage_account_name != null && can(regex("^[a-z0-9]{3,24}$", var.flow_logs_storage_account_name))
       error_message = "enable_flow_logs requires flow_logs_storage_account_name to be a globally unique 3-24 character lowercase alphanumeric name."
     }
+  }
+}
+
+resource "azurerm_storage_account_queue_properties" "flow_logs" {
+  count = var.enable_flow_logs ? 1 : 0
+
+  storage_account_id = azurerm_storage_account.flow_logs[0].id
+
+  logging {
+    version               = "1.0"
+    delete                = true
+    read                  = true
+    write                 = true
+    retention_policy_days = 30
   }
 }
 
