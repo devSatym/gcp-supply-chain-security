@@ -15,9 +15,14 @@ variable "topic_name" {
 }
 
 variable "discord_webhook_url" {
-  description = "Discord incoming webhook URL (Server Settings -> Integrations -> Webhooks). Stored in Secret Manager, never passed as a plain env var."
+  description = "Discord incoming webhook URL. Pass it from the root with TF_VAR_discord_webhook_url; it is sent to Secret Manager through a write-only provider field."
   type        = string
   sensitive   = true
+}
+
+variable "discord_webhook_secret_version" {
+  description = "Non-secret rotation counter for discord_webhook_url. Increment it when the webhook URL changes."
+  type        = number
 }
 
 variable "min_priority" {

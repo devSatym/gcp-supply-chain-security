@@ -1,0 +1,51 @@
+name: Azure OIDC and ACR Login
+description: Authenticate to Azure with GitHub OIDC and log Docker in to Azure Container Registry without a client secret.
+
+inputs:
+  client_id:
+    description: Client ID of the GitHub Actions user-assigned managed identity.
+    required: true
+  tenant_id:
+    description: Microsoft Entra tenant ID that owns the managed identity.
+    required: true
+  subscription_id:
+    description: Azure subscription ID containing the Azure Container Registry.
+    required: true
+  acr_name:
+    description: Azure Container Registry resource name, without the .azurecr.io suffix.
+    required: true
+  acr_login_server:
+    description: Azure Container Registry login server, for example example.azurecr.io.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Authenticate to Azure with GitHub OIDC
+      uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+      with:
+        client-id: ${{ inputs.client_id }}
+        tenant-id: ${{ inputs.tenant_id }}
+        subscription-id: ${{ inputs.subscription_id }}
+
+    # `az acr login --expose-token` returns a short-lived Entra token. The
+    # all-zero username is the documented Docker username for this token flow;
+    # it is not an ACR admin credential or a stored password.
+    - name: Obtain short-lived ACR access token
+      id: acr_token
+      shell: bash
+      env:
+        ACR_NAME: ${{ inputs.acr_name }}
+      run: |
+        set -euo pipefail
+        access_token="$(az acr login --name "$ACR_NAME" --expose-token --output tsv --query accessToken)"
+        test -n "$access_token"
+        echo "::add-mask::$access_token"
+        echo "access-token=$access_token" >> "$GITHUB_OUTPUT"
+
+    - name: Log Docker in to Azure Container Registry
+      uses: azure/docker-login@15c4aadf093404726ab2ff205b2cdd33fa6d054c # v2
+      with:
+        login-server: ${{ inputs.acr_login_server }}
+        username: 00000000-0000-0000-0000-000000000000
+        password: ${{ steps.acr_token.outputs.access-token }}

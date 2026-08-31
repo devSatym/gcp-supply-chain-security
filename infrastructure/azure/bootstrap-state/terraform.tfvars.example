@@ -1,0 +1,25 @@
+# Replace every placeholder before running Terraform. Do not put credentials,
+# access keys, client secrets, or real IP ranges in committed tfvars files.
+resource_group_name  = "rg-supply-chain-tfstate-prod"
+location             = "centralindia"
+storage_account_name = "stscsprodexample001"
+
+# Include the current Terraform runner's fixed egress CIDR. Alternatively,
+# set public_network_access_enabled = false and use a private endpoint outside
+# this bootstrap configuration.
+allowed_ip_ranges = ["203.0.113.10/32"]
+
+# Add the Entra object IDs of the CI and operator identities that will use the
+# state backend. The bootstrap caller needs this role before Container creation
+# or must already hold Storage Blob Data Contributor.
+state_operator_principal_ids = [
+  "00000000-0000-0000-0000-000000000000",
+]
+
+owner         = "platform-security"
+project_label = "supply-chain-security"
+cost_center   = "security"
+
+tags = {
+  data_classification = "confidential"
+}

@@ -1,0 +1,23 @@
+# Copy to an ignored terraform.tfvars file before planning. Do not put Azure
+# credentials, client secrets, or webhooks here; this module uses OIDC/UAMIs.
+resource_group_name = "rg-supply-chain-prod"
+location            = "centralindia"
+name_prefix         = "supplychain-prod"
+
+# Must be globally unique and contain only letters and digits.
+acr_name = "supplychainprodacr"
+
+# Pass this from the AKS module output in the environment root. Do not invent
+# it; it is unique to the AKS cluster.
+aks_oidc_issuer_url = "https://example.oidc.prod-aks.azure.com/"
+
+# Leave catalog enumeration disabled unless a tested client requires it.
+enable_github_ci_catalog_lister = false
+enable_kyverno_catalog_lister   = false
+
+tags = {
+  environment = "prod"
+  owner       = "platform-team"
+  project     = "supply-chain-security"
+  cost_center = "engineering"
+}

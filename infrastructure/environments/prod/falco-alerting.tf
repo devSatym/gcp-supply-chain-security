@@ -9,10 +9,11 @@ module "falco_alerting" {
 
   source = "../../falco-alerting"
 
-  project_id          = var.project_id
-  region              = var.region
-  discord_webhook_url = var.discord_webhook_url
-  min_priority        = "notice"
+  project_id                     = var.project_id
+  region                         = var.region
+  discord_webhook_url            = var.discord_webhook_url
+  discord_webhook_secret_version = var.discord_webhook_secret_version
+  min_priority                   = "notice"
 
   depends_on = [google_project_service.required]
 }

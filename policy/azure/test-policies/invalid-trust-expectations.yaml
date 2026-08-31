@@ -1,0 +1,57 @@
+# Static negative-test contract only. This policy is not installed by the
+# production Terraform module. It documents the untrusted signer and
+# provenance values that admission tests must reject.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: invalid-trust-expectations
+  annotations:
+    azure.supply-chain-security.io/test-only: "true"
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: reject-invalid-trust
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              selector:
+                matchLabels:
+                  supply-chain-security-test: invalid-trust
+      verifyImages:
+        - imageReferences:
+            - "example.azurecr.io/supply-chain-security/supply-chain-demo:*"
+            - "example.azurecr.io/supply-chain-security/supply-chain-demo@*"
+          repository: "example.azurecr.io/supply-chain-security-attestations/supply-chain-demo"
+          imageRegistryCredentials:
+            helpers:
+              - azure
+          attestors:
+            - entries:
+                - keyless:
+                    subject: "https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/not-the-signing-workflow.yml@refs/heads/main"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+          attestations:
+            - type: https://slsa.dev/provenance/v0.2
+              attestors:
+                - entries:
+                    - keyless:
+                        subject: "https://github.com/devSatym/gcp-supply-chain-security/.github/workflows/not-the-signing-workflow.yml@refs/heads/main"
+                        issuer: "https://token.actions.githubusercontent.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    - key: "{{ invocation.configSource.entryPoint }}"
+                      operator: Equals
+                      value: ".github/workflows/not-the-signing-workflow.yml"
+                    - key: "{{ invocation.configSource.uri }}"
+                      operator: Equals
+                      value: "git+https://github.com/devSatym/gcp-supply-chain-security@refs/heads/feature/untrusted"
+          mutateDigest: false
+          verifyDigest: true
+          required: true

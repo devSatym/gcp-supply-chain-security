@@ -1,0 +1,9 @@
+# Documentation-only example. The trusted Azure workflow generates the concrete
+# values.release.yaml file after verification and locking; never replace these
+# placeholders by hand with a mutable tag.
+workload:
+  enabled: true
+
+image:
+  repository: "REPLACE_WITH_OWNER_ACR_LOGIN_SERVER/REPLACE_WITH_OWNER_APPLICATION_REPOSITORY"
+  digest: "sha256:REPLACE_WITH_64_HEX_DIGEST"

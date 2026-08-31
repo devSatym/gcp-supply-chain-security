@@ -1,0 +1,160 @@
+name: Azure Sign and Attest
+
+on:
+  workflow_call:
+    inputs:
+      digest:
+        required: true
+        type: string
+      acr_name:
+        required: true
+        type: string
+      acr_login_server:
+        required: true
+        type: string
+      acr_repository:
+        required: true
+        type: string
+      cosign_repository:
+        required: true
+        type: string
+      azure_client_id:
+        required: true
+        type: string
+      azure_tenant_id:
+        required: true
+        type: string
+      azure_subscription_id:
+        required: true
+        type: string
+
+env:
+  ACR_NAME: ${{ inputs.acr_name }}
+  ACR_LOGIN_SERVER: ${{ inputs.acr_login_server }}
+  ACR_REPOSITORY: ${{ inputs.acr_repository }}
+  COSIGN_REPOSITORY: ${{ inputs.cosign_repository }}
+  TRUSTED_REF: refs/heads/main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  sign-attest:
+    name: Sign, SBOM, and Provenance for Azure Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Authenticate to Azure Container Registry
+        uses: ./.github/actions/azure-auth
+        with:
+          client_id: ${{ inputs.azure_client_id }}
+          tenant_id: ${{ inputs.azure_tenant_id }}
+          subscription_id: ${{ inputs.azure_subscription_id }}
+          acr_name: ${{ env.ACR_NAME }}
+          acr_login_server: ${{ env.ACR_LOGIN_SERVER }}
+
+      - name: Setup Cosign
+        uses: ./.github/actions/setup-cosign
+
+      - name: Setup Syft
+        uses: ./.github/actions/setup-syft
+
+      - name: Sign image keylessly
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          IMAGE_DIGEST: "${{ env.ACR_LOGIN_SERVER }}/${{ env.ACR_REPOSITORY }}@${{ inputs.digest }}"
+        run: |
+          set -euo pipefail
+          echo "Signing: ${IMAGE_DIGEST}"
+          cosign sign --yes "${IMAGE_DIGEST}"
+
+      - name: Generate SBOM
+        env:
+          IMAGE_DIGEST: "${{ env.ACR_LOGIN_SERVER }}/${{ env.ACR_REPOSITORY }}@${{ inputs.digest }}"
+        run: |
+          set -euo pipefail
+          echo "Generating SBOM for: ${IMAGE_DIGEST}"
+          syft "${IMAGE_DIGEST}" -o spdx-json > sbom.spdx.json
+          echo "SBOM generated -- packages found:"
+          jq '.packages | length' sbom.spdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: azure-sbom-${{ github.sha }}
+          path: sbom.spdx.json
+          retention-days: 90
+
+      - name: Attest SBOM
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          IMAGE_DIGEST: "${{ env.ACR_LOGIN_SERVER }}/${{ env.ACR_REPOSITORY }}@${{ inputs.digest }}"
+        run: |
+          set -euo pipefail
+          cosign attest --yes \
+            --predicate sbom.spdx.json \
+            --type spdxjson \
+            "${IMAGE_DIGEST}"
+
+      - name: Generate and attest SLSA provenance
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          IMAGE_DIGEST: "${{ env.ACR_LOGIN_SERVER }}/${{ env.ACR_REPOSITORY }}@${{ inputs.digest }}"
+          REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW: ${{ github.workflow }}
+        run: |
+          set -euo pipefail
+
+          # github.workflow_ref resolves to the top-level caller. Read the
+          # reusable workflow identity from the signed GitHub OIDC token so the
+          # attestation's entryPoint remains the actual signing workflow.
+          oidc_token="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" | jq -r '.value')"
+          payload="$(echo "$oidc_token" | cut -d '.' -f2 | tr '_-' '/+')"
+          case $((${#payload} % 4)) in
+            2) payload="${payload}==" ;;
+            3) payload="${payload}=" ;;
+          esac
+          entrypoint="$(echo "$payload" | base64 -d | jq -er '.job_workflow_ref' | sed -e "s#^${REPOSITORY}/##" -e 's#@.*$##')"
+          test "$entrypoint" = ".github/workflows/azure-sign-attest.yml"
+
+          cat > provenance.json <<EOF
+          {
+            "buildType": "https://github.com/Attestations/GitHubActionsWorkflow@v1",
+            "builder": {
+              "id": "https://github.com/actions/runner"
+            },
+            "invocation": {
+              "configSource": {
+                "uri": "git+https://github.com/${REPOSITORY}@${TRUSTED_REF}",
+                "digest": {
+                  "sha1": "${COMMIT_SHA}"
+                },
+                "entryPoint": "${entrypoint}"
+              },
+              "parameters": {
+                "event": "${EVENT_NAME}",
+                "ref": "${TRUSTED_REF}",
+                "workflow": "${WORKFLOW}"
+              }
+            },
+            "materials": [
+              {
+                "uri": "git+https://github.com/${REPOSITORY}",
+                "digest": {
+                  "sha1": "${COMMIT_SHA}"
+                }
+              }
+            ]
+          }
+          EOF
+
+          cosign attest --yes \
+            --predicate provenance.json \
+            --type slsaprovenance \
+            "${IMAGE_DIGEST}"

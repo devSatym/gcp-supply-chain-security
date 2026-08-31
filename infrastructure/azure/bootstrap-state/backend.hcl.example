@@ -1,0 +1,8 @@
+# Copy these values from terraform output -json backend_config or set them
+# explicitly at init time. Authentication comes from ARM_* environment variables.
+resource_group_name  = "rg-supply-chain-tfstate-prod"
+storage_account_name = "stscsprodexample001"
+container_name        = "tfstate"
+key                   = "azure-supply-chain-security/prod.terraform.tfstate"
+use_azuread_auth      = true
+use_oidc              = true

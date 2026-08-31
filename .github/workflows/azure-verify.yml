@@ -1,0 +1,179 @@
+name: Azure Verify Attestations
+
+on:
+  workflow_call:
+    inputs:
+      digest:
+        required: true
+        type: string
+      acr_name:
+        required: true
+        type: string
+      acr_login_server:
+        required: true
+        type: string
+      acr_repository:
+        required: true
+        type: string
+      cosign_repository:
+        required: true
+        type: string
+      azure_client_id:
+        required: true
+        type: string
+      azure_tenant_id:
+        required: true
+        type: string
+      azure_subscription_id:
+        required: true
+        type: string
+
+env:
+  ACR_NAME: ${{ inputs.acr_name }}
+  ACR_LOGIN_SERVER: ${{ inputs.acr_login_server }}
+  ACR_REPOSITORY: ${{ inputs.acr_repository }}
+  COSIGN_REPOSITORY: ${{ inputs.cosign_repository }}
+  TRUSTED_REF: refs/heads/main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify:
+    name: Verify Azure Signature and Attestations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Authenticate to Azure Container Registry
+        uses: ./.github/actions/azure-auth
+        with:
+          client_id: ${{ inputs.azure_client_id }}
+          tenant_id: ${{ inputs.azure_tenant_id }}
+          subscription_id: ${{ inputs.azure_subscription_id }}
+          acr_name: ${{ env.ACR_NAME }}
+          acr_login_server: ${{ env.ACR_LOGIN_SERVER }}
+
+      - name: Setup Cosign
+        uses: ./.github/actions/setup-cosign
+
+      - name: Verify image signature
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          IMAGE_DIGEST: "${{ env.ACR_LOGIN_SERVER }}/${{ env.ACR_REPOSITORY }}@${{ inputs.digest }}"
+          CERT_IDENTITY: "https://github.com/${{ github.repository }}/.github/workflows/azure-sign-attest.yml@refs/heads/main"
+          EXPECTED_DIGEST: ${{ inputs.digest }}
+        run: |
+          set -euo pipefail
+          result="$(cosign verify \
+            --certificate-identity="$CERT_IDENTITY" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            "$IMAGE_DIGEST")"
+          parsed="$(echo "$result" | jq -e --arg expected_digest "$EXPECTED_DIGEST" '
+            [ .[]
+              | select(.critical.image["docker-manifest-digest"] == $expected_digest)
+              | {subject: .optional.Subject, issuer: .optional.Issuer,
+                 signerDigest: .critical.image["docker-manifest-digest"]}
+            ] | if length == 0 then error("no signature matched expected digest") else .[0] end')"
+          echo "$parsed"
+          {
+            echo "SIG_SUBJECT=$(echo "$parsed" | jq -r '.subject')"
+            echo "SIG_ISSUER=$(echo "$parsed" | jq -r '.issuer')"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify SPDX SBOM attestation
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          IMAGE_DIGEST: "${{ env.ACR_LOGIN_SERVER }}/${{ env.ACR_REPOSITORY }}@${{ inputs.digest }}"
+          CERT_IDENTITY: "https://github.com/${{ github.repository }}/.github/workflows/azure-sign-attest.yml@refs/heads/main"
+          EXPECTED_DIGEST: ${{ inputs.digest }}
+        run: |
+          set -euo pipefail
+          expected_digest_sha="${EXPECTED_DIGEST#sha256:}"
+          parsed="$(cosign verify-attestation \
+            --certificate-identity="$CERT_IDENTITY" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            --type spdxjson "$IMAGE_DIGEST" \
+            | jq -s -e --arg expected_digest "$expected_digest_sha" '
+                [ .[] | .payload | @base64d | fromjson
+                  | select(.predicateType == "https://spdx.dev/Document")
+                  | select(any(.subject[]?; .digest.sha256 == $expected_digest))
+                  | {predicateType: .predicateType,
+                     packageCount: (.predicate.packages | length),
+                     subjectDigest: ("sha256:" + .subject[0].digest.sha256)}
+                ] | if length == 0 then error("no SPDX attestation matched expected digest") else .[0] end')"
+          echo "$parsed"
+          echo "SBOM_PACKAGE_COUNT=$(echo "$parsed" | jq -r '.packageCount')" >> "$GITHUB_ENV"
+
+      - name: Verify SLSA provenance attestation
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          IMAGE_DIGEST: "${{ env.ACR_LOGIN_SERVER }}/${{ env.ACR_REPOSITORY }}@${{ inputs.digest }}"
+          CERT_IDENTITY: "https://github.com/${{ github.repository }}/.github/workflows/azure-sign-attest.yml@refs/heads/main"
+          EXPECTED_DIGEST: ${{ inputs.digest }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+          EXPECTED_SOURCE: "git+https://github.com/${{ github.repository }}@refs/heads/main"
+          EXPECTED_MATERIAL_SOURCE: "git+https://github.com/${{ github.repository }}"
+          EXPECTED_ENTRYPOINT: .github/workflows/azure-sign-attest.yml
+          EXPECTED_BUILDER: https://github.com/actions/runner
+        run: |
+          set -euo pipefail
+          expected_digest_sha="${EXPECTED_DIGEST#sha256:}"
+          parsed="$(cosign verify-attestation \
+            --certificate-identity="$CERT_IDENTITY" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            --type slsaprovenance "$IMAGE_DIGEST" \
+            | jq -s -e \
+                --arg expected_digest "$expected_digest_sha" \
+                --arg expected_commit "$EXPECTED_COMMIT" \
+                --arg expected_source "$EXPECTED_SOURCE" \
+                --arg expected_material_source "$EXPECTED_MATERIAL_SOURCE" \
+                --arg expected_entrypoint "$EXPECTED_ENTRYPOINT" \
+                --arg expected_builder "$EXPECTED_BUILDER" '
+                [ .[] | .payload | @base64d | fromjson
+                  | select(.predicateType == "https://slsa.dev/provenance/v0.2")
+                  | select(any(.subject[]?; .digest.sha256 == $expected_digest))
+                  | select(.predicate.builder.id == $expected_builder)
+                  | select(.predicate.invocation.configSource.entryPoint == $expected_entrypoint)
+                  | select(.predicate.invocation.configSource.uri == $expected_source)
+                  | select(.predicate.invocation.configSource.digest.sha1 == $expected_commit)
+                  | select(any(.predicate.materials[]?;
+                      .uri == $expected_material_source and .digest.sha1 == $expected_commit))
+                  | {predicateType: .predicateType, builder: .predicate.builder.id,
+                     entryPoint: .predicate.invocation.configSource.entryPoint,
+                     source: .predicate.invocation.configSource.uri,
+                     sourceCommit: .predicate.invocation.configSource.digest.sha1,
+                     subjectDigest: ("sha256:" + .subject[0].digest.sha256)}
+                ] | if length == 0 then error("no provenance attestation met the trust contract") else .[0] end')"
+          echo "$parsed"
+          {
+            echo "PROVENANCE_BUILDER=$(echo "$parsed" | jq -r '.builder')"
+            echo "PROVENANCE_ENTRYPOINT=$(echo "$parsed" | jq -r '.entryPoint')"
+            echo "PROVENANCE_SOURCE=$(echo "$parsed" | jq -r '.source')"
+            echo "PROVENANCE_SOURCE_COMMIT=$(echo "$parsed" | jq -r '.sourceCommit')"
+          } >> "$GITHUB_ENV"
+
+      - name: Output verification summary
+        env:
+          IMAGE_DIGEST: "${{ env.ACR_LOGIN_SERVER }}/${{ env.ACR_REPOSITORY }}@${{ inputs.digest }}"
+        run: |
+          {
+            echo "## Azure Supply Chain Verification: PASSED"
+            echo ""
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| Signature | keyless, verified against \`${SIG_ISSUER}\` |"
+            echo "| SBOM | SPDX JSON, **${SBOM_PACKAGE_COUNT} packages** enumerated |"
+            echo "| Provenance | SLSA v0.2, built by \`${PROVENANCE_BUILDER}\` |"
+            echo ""
+            echo "\`\`\`"
+            echo "digest        ${IMAGE_DIGEST}"
+            echo "signer        ${SIG_SUBJECT}"
+            echo "entrypoint    ${PROVENANCE_ENTRYPOINT}"
+            echo "builder       ${PROVENANCE_BUILDER}"
+            echo "source        ${PROVENANCE_SOURCE}"
+            echo "source commit ${PROVENANCE_SOURCE_COMMIT}"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"

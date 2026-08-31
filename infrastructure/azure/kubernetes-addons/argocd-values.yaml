@@ -1,0 +1,39 @@
+# Minimal private Argo CD foundation for the constrained AKS demo cluster.
+# The Application manifest remains the reviewed GitOps boundary; no Argo
+# credentials, public ingress, or external endpoint are configured here.
+global:
+  domain: argocd.local
+
+configs:
+  params:
+    server.insecure: "true"
+
+server:
+  replicas: 1
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false
+  ingressGrpc:
+    enabled: false
+
+controller:
+  replicas: 1
+
+repoServer:
+  replicas: 1
+
+applicationSet:
+  replicas: 1
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
+
+redis-ha:
+  enabled: false
+
+redis:
+  enabled: true

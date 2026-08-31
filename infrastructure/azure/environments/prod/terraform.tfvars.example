@@ -1,0 +1,53 @@
+# Replace every placeholder before use. Do not put credentials, client
+# secrets, storage keys, connection strings, or real webhooks in committed
+# tfvars. The Discord webhook, if ever used, goes through
+# TF_VAR_discord_webhook_url only.
+
+resource_group_name = "rg-supply-chain-prod"
+location            = "REPLACE_WITH_OWNER_REGION"
+vnet_name           = "vnet-supply-chain-prod"
+cluster_name        = "aks-supply-chain-prod"
+
+# Entra groups for AKS cluster-admin via Azure RBAC. Never individuals.
+azure_rbac_admin_group_object_ids = [
+  "00000000-0000-0000-0000-000000000000",
+]
+
+name_prefix         = "supplychain-prod"
+acr_name            = "REPLACE_WITH_UNIQUE_ACR_NAME"
+
+# The apply-once runner manages these gates. Keep the example safe for the
+# first foundation convergence; do not close public service access until the
+# runner has created and probed every required Private Endpoint.
+enable_workload_addons       = false
+enable_runtime_alerting      = false
+enable_private_endpoints     = false
+disable_public_network_access = false
+enable_flow_logs             = false
+# Required only when enable_flow_logs = true; supply an owner-approved,
+# globally unique lowercase StorageV2 name outside source control.
+# flow_logs_storage_account_name = "REPLACE_WITH_UNIQUE_FLOW_LOG_STORAGE_NAME"
+
+# Required only when enable_runtime_alerting = true. Keep the webhook itself in
+# TF_VAR_discord_webhook_url; provide a rotating non-secret version counter and
+# a future UTC expiration plus the CIDRs that may write it during public mode.
+# discord_webhook_secret_expiration_date = "2030-01-01T00:00:00Z"
+# alerting_trusted_public_ip_ranges       = ["203.0.113.10/32"]
+
+# The Azure parity window is daily at 03:00 UTC, matching the active GCP
+# maintenance policy. Override only with an owner-reviewed operations choice.
+node_os_upgrade_channel = "NodeImage"
+enable_maintenance_windows = true
+maintenance_window_frequency = "Daily"
+maintenance_window_interval = 1
+maintenance_window_duration_hours = 4
+maintenance_window_start_time = "03:00"
+maintenance_window_utc_offset = "+00:00"
+
+owner         = "platform-security"
+project_label = "supply-chain-security"
+cost_center   = "security"
+
+tags = {
+  data_classification = "confidential"
+}

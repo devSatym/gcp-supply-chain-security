@@ -1,0 +1,19 @@
+# Replace example names and CIDRs before use. None of the values below are
+# Azure credentials or production identifiers.
+resource_group_name = "rg-supply-chain-prod"
+location            = "centralindia"
+vnet_name           = "vnet-supply-chain-prod"
+
+environment   = "prod"
+owner         = "platform-security"
+project_label = "supply-chain-security"
+cost_center   = "security"
+
+# Enable only after confirming VNet flow logs are supported and the applying
+# principal can manage Network Watcher resources in this subscription.
+enable_flow_logs               = false
+flow_logs_storage_account_name = null
+
+tags = {
+  data_classification = "internal"
+}

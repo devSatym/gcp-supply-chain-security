@@ -27,6 +27,7 @@ Argo CD reconciles digest-pinned desired state into GKE. Kyverno enforces the co
 - [Live Validation Evidence](#live-validation-evidence)
 - [Repository Structure](#repository-structure)
 - [Infrastructure](#infrastructure)
+- [Azure Startup](#azure-startup)
 - [CI/CD Workflows](#cicd-workflows)
 - [Reproduce or Inspect Safely](#reproduce-or-inspect-safely)
 - [Threat Model and Boundaries](#threat-model-and-boundaries)
@@ -493,6 +494,27 @@ Kyverno and Argo CD are installed separately with Helm because the executable Ku
 
 See [the production infrastructure guide](infrastructure/environments/prod/README.md) for the precise module and provider details.
 
+## Azure Startup
+
+The Azure implementation is additive to the GCP reference implementation. Once
+the owner has bootstrapped the Azure Blob remote-state backend and is running
+from a network that can resolve and reach private AKS, the full Azure rollout is
+started with one command:
+
+```bash
+scripts/azure/apply-once.sh --mode core
+```
+
+The runner uses the configured Azure remote backend, applies saved Terraform
+plans, verifies the private AKS control-plane path, and installs the Azure
+add-ons and GitOps application. Use `--mode private` only when the required
+private endpoints and a private GitHub Actions runner are ready; it closes
+public service access only after the prerequisite connectivity checks pass.
+
+See the [Azure startup guide](scripts/azure/README.md) for owner-supplied
+inputs and the [Azure status and validation guide](docs/azure/README.md) for
+the current live-readiness state.
+
 ## CI/CD Workflows
 
 | Workflow | Trigger | Responsibility |
@@ -663,5 +685,3 @@ The disposable unsigned Artifact Registry image should be deleted only after its
 - Kyverno signature, SBOM, provenance, source-identity, and initContainer enforcement
 - Falco modern eBPF runtime detection and Falcosidekick integration
 - Debugging and proving negative admission outcomes instead of only showing a happy path
-
-

@@ -1,0 +1,259 @@
+name: Azure Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'k8s/azure/supply-chain-demo/Chart.yaml'
+      - 'k8s/azure/supply-chain-demo/values.yaml'
+      - 'k8s/azure/supply-chain-demo/values.release.yaml.example'
+      - 'k8s/azure/supply-chain-demo/values.release.yaml.template'
+      - 'k8s/azure/supply-chain-demo/templates/**'
+      - 'policy/azure/**'
+      - '.github/workflows/azure-*.yml'
+      - '.github/actions/azure-auth/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'k8s/azure/supply-chain-demo/Chart.yaml'
+      - 'k8s/azure/supply-chain-demo/values.yaml'
+      - 'k8s/azure/supply-chain-demo/values.release.yaml.example'
+      - 'k8s/azure/supply-chain-demo/values.release.yaml.template'
+      - 'k8s/azure/supply-chain-demo/templates/**'
+      - 'policy/azure/**'
+      - '.github/workflows/azure-*.yml'
+      - '.github/actions/azure-auth/**'
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm a main-branch Azure build/sign/attest run.'
+        required: true
+        type: string
+
+# Only trusted main can receive Azure OIDC authority. The feature branch runs
+# azure-static-validation.yml only, even when manually dispatched elsewhere.
+concurrency:
+  group: azure-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+  security-events: write
+
+jobs:
+  pr-image-scan:
+    name: Azure PR Image Scan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Build image for local scan
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          tags: supply-chain-demo:azure-pr-${{ github.sha }}
+
+      - name: Scan PR image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: supply-chain-demo:azure-pr-${{ github.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          format: sarif
+          output: trivy-azure-pr-image.sarif
+          trivyignores: .trivyignore
+          limit-severities-for-sarif: true
+
+      - name: Upload Azure PR image scan SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          sarif_file: trivy-azure-pr-image.sarif
+          category: trivy-azure-pr-image
+
+  build-push:
+    name: Azure Build and Push
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.inputs.confirm == 'deploy')
+    uses: ./.github/workflows/azure-build-push.yml
+    with:
+      image_tag: ${{ github.sha }}
+      push: true
+      acr_name: ${{ vars.ACR_NAME }}
+      acr_login_server: ${{ vars.ACR_LOGIN_SERVER }}
+      acr_repository: ${{ vars.ACR_REPOSITORY }}
+      azure_client_id: ${{ vars.AZURE_CLIENT_ID }}
+      azure_tenant_id: ${{ vars.AZURE_TENANT_ID }}
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+  sbom-vex:
+    name: Azure SBOM and VEX (non-blocking)
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.inputs.confirm == 'deploy')
+    uses: ./.github/workflows/sbom-vex.yml
+
+  sign-attest:
+    name: Azure Sign and Attest
+    needs: build-push
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/azure-sign-attest.yml
+    with:
+      digest: ${{ needs.build-push.outputs.digest }}
+      acr_name: ${{ vars.ACR_NAME }}
+      acr_login_server: ${{ vars.ACR_LOGIN_SERVER }}
+      acr_repository: ${{ vars.ACR_REPOSITORY }}
+      cosign_repository: ${{ vars.COSIGN_REPOSITORY }}
+      azure_client_id: ${{ vars.AZURE_CLIENT_ID }}
+      azure_tenant_id: ${{ vars.AZURE_TENANT_ID }}
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+  verify:
+    name: Azure Verify
+    needs: [build-push, sign-attest]
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/azure-verify.yml
+    with:
+      digest: ${{ needs.build-push.outputs.digest }}
+      acr_name: ${{ vars.ACR_NAME }}
+      acr_login_server: ${{ vars.ACR_LOGIN_SERVER }}
+      acr_repository: ${{ vars.ACR_REPOSITORY }}
+      cosign_repository: ${{ vars.COSIGN_REPOSITORY }}
+      azure_client_id: ${{ vars.AZURE_CLIENT_ID }}
+      azure_tenant_id: ${{ vars.AZURE_TENANT_ID }}
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+  lock-verified-image:
+    name: Azure Lock Verified Image
+    needs: [build-push, verify]
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/azure-lock-image.yml
+    with:
+      digest: ${{ needs.build-push.outputs.digest }}
+      acr_name: ${{ vars.ACR_NAME }}
+      acr_login_server: ${{ vars.ACR_LOGIN_SERVER }}
+      acr_repository: ${{ vars.ACR_REPOSITORY }}
+      azure_client_id: ${{ vars.AZURE_CLIENT_ID }}
+      azure_tenant_id: ${{ vars.AZURE_TENANT_ID }}
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+  # Promotion happens only after the digest is verified and locked. This job
+  # has no Azure authority: it renders the verified digest into the reviewed
+  # release-values artifact consumed by the Argo CD Application.
+  promote:
+    name: Azure Promote Verified Digest
+    needs: [build-push, verify, lock-verified-image]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+      ACR_APPLICATION_REPOSITORY: ${{ vars.ACR_REPOSITORY }}
+      IMAGE_DIGEST: ${{ needs.build-push.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Render digest-pinned release values
+        id: render
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "The verified output is not an exact sha256 digest" >&2
+            exit 1
+          }
+          [[ "$ACR_LOGIN_SERVER" =~ ^[A-Za-z0-9]+\.azurecr\.io$ ]] || {
+            echo "ACR_LOGIN_SERVER is not an Azure registry hostname" >&2
+            exit 1
+          }
+          [[ "$ACR_APPLICATION_REPOSITORY" =~ ^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*$ ]] || {
+            echo "ACR_APPLICATION_REPOSITORY is not a repository path" >&2
+            exit 1
+          }
+
+          rendered_values="${RUNNER_TEMP}/azure-values.release.yaml"
+          rendered_manifest="${RUNNER_TEMP}/supply-chain-azure-release.yaml"
+          envsubst '${ACR_LOGIN_SERVER} ${ACR_APPLICATION_REPOSITORY} ${IMAGE_DIGEST}' \
+            < k8s/azure/supply-chain-demo/values.release.yaml.template \
+            > "$rendered_values"
+          ! grep -Eq '\$\{|REPLACE_WITH|:latest' "$rendered_values"
+
+          helm template supply-chain-demo k8s/azure/supply-chain-demo \
+            --values "$rendered_values" > "$rendered_manifest"
+          expected_image="${ACR_LOGIN_SERVER}/${ACR_APPLICATION_REPOSITORY}@${IMAGE_DIGEST}"
+          grep -F -- "$expected_image" "$rendered_manifest"
+          grep -F -- 'kind: Deployment' "$rendered_manifest"
+          grep -F -- 'kind: Service' "$rendered_manifest"
+
+          release_file="k8s/azure/supply-chain-demo/values.release.yaml"
+          cp "$rendered_values" "$release_file"
+          git diff --check
+          mapfile -t changed_files < <(git status --porcelain=v1 --untracked-files=all | sed -E 's/^.. //')
+          test "${#changed_files[@]}" -eq 1
+          test "${changed_files[0]}" = "$release_file"
+          {
+            echo "values_file=$rendered_values"
+            echo "manifest_file=$rendered_manifest"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload release rendering for evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: azure-release-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/azure-values.release.yaml
+            ${{ runner.temp }}/supply-chain-azure-release.yaml
+          retention-days: 90
+
+      - name: Commit and push only the verified release values
+        run: |
+          set -Eeuo pipefail
+          release_file="k8s/azure/supply-chain-demo/values.release.yaml"
+          git add -- "$release_file"
+          git diff --cached --check
+          mapfile -t staged_files < <(git diff --cached --name-only)
+          test "${#staged_files[@]}" -eq 1
+          test "${staged_files[0]}" = "$release_file"
+
+          if git diff --cached --quiet; then
+            echo "Verified digest is already promoted; nothing to push."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(azure): promote verified image digest"
+          git push origin "HEAD:refs/heads/main"
+
+      - name: Record promotion summary
+        run: |
+          {
+            echo "## Azure release promotion"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Image | \`${ACR_LOGIN_SERVER}/${ACR_APPLICATION_REPOSITORY}@${IMAGE_DIGEST}\` |"
+            echo "| Verified | signature + SPDX SBOM + SLSA provenance (azure-verify) |"
+            echo "| Locked | write/delete disabled on the verified manifest |"
+            echo ""
+            echo "The verified release values were promoted to main for private Argo CD reconciliation."
+          } >> "$GITHUB_STEP_SUMMARY"
