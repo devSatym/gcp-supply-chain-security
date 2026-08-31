@@ -209,7 +209,7 @@ jobs:
 
           rendered_values="${RUNNER_TEMP}/azure-values.release.yaml"
           rendered_manifest="${RUNNER_TEMP}/supply-chain-azure-release.yaml"
-          envsubst_variables='${ACR_LOGIN_SERVER} ${ACR_APPLICATION_REPOSITORY} ${IMAGE_DIGEST}'
+          envsubst_variables="\${ACR_LOGIN_SERVER} \${ACR_APPLICATION_REPOSITORY} \${IMAGE_DIGEST}"
           envsubst "$envsubst_variables" \
             < k8s/azure/supply-chain-demo/values.release.yaml.template \
             > "$rendered_values"
