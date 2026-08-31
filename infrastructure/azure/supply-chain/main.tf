@@ -240,7 +240,6 @@ resource "azurerm_role_assignment" "github_terraform_state_reader" {
   principal_id                     = azurerm_user_assigned_identity.github_terraform[0].principal_id
   principal_type                   = "ServicePrincipal"
   skip_service_principal_aad_check = true
-  description                      = "Terraform convergence identity may refresh only the remote-state role assignments."
 }
 
 # Kyverno's admission controller is the only Kubernetes ServiceAccount trusted
