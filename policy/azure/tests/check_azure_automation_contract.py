@@ -35,6 +35,7 @@ for required in (
     'mktemp -d',
     "-backend-config=use_azuread_auth=true",
     "terraform -chdir=\"$TF_ROOT\" apply -input=false \"$plan_file\"",
+    "-target=module.private_runner",
     "PRIVATE_GITHUB_RUNNER_READY",
     "probe_private_api",
     "probe_private_service_endpoints",

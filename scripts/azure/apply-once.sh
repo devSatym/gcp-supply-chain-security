@@ -376,6 +376,7 @@ main() {
       -target=module.network \
       -target=module.aks \
       -target=module.supply_chain \
+      -target=module.private_runner \
       -var='enable_workload_addons=false' \
       -var='enable_runtime_alerting=false' \
       -var='enable_private_endpoints=false' \
