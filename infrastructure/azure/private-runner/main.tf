@@ -23,7 +23,7 @@ resource "azurerm_linux_virtual_machine" "this" {
   admin_username                  = var.admin_username
   disable_password_authentication = true
   network_interface_ids           = [azurerm_network_interface.this.id]
-  encryption_at_host_enabled      = true
+  encryption_at_host_enabled      = var.encryption_at_host_enabled
   secure_boot_enabled             = true
   vtpm_enabled                    = true
   patch_mode                      = "AutomaticByPlatform"

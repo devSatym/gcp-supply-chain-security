@@ -134,13 +134,14 @@ module "private_runner" {
   source = "../../private-runner"
   count  = var.enable_private_runner ? 1 : 0
 
-  resource_group_name  = module.network.resource_group_name
-  location             = module.network.location
-  subnet_id            = module.network.private_runner_subnet_id
-  name_prefix          = var.name_prefix
-  admin_ssh_public_key = var.private_runner_admin_ssh_public_key
-  vm_size              = var.private_runner_vm_size
-  tags                 = local.tags
+  resource_group_name        = module.network.resource_group_name
+  location                   = module.network.location
+  subnet_id                  = module.network.private_runner_subnet_id
+  name_prefix                = var.name_prefix
+  admin_ssh_public_key       = var.private_runner_admin_ssh_public_key
+  vm_size                    = var.private_runner_vm_size
+  encryption_at_host_enabled = var.private_runner_encryption_at_host_enabled
+  tags                       = local.tags
 }
 
 module "monitoring" {

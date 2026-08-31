@@ -35,6 +35,12 @@ variable "vm_size" {
   default     = "Standard_D2s_v5"
 }
 
+variable "encryption_at_host_enabled" {
+  description = "Enable encryption at host only when the Microsoft.Compute/EncryptionAtHost subscription feature is registered. Managed disks remain encrypted at rest in either mode."
+  type        = bool
+  default     = false
+}
+
 variable "admin_username" {
   description = "Linux administrator account required by the Azure VM API. The runner itself uses a separate unprivileged account."
   type        = string

@@ -204,15 +204,17 @@ resource "azurerm_network_security_group" "private_runner" {
   }
 
   security_rule {
-    name                       = "AllowAzureDNS"
-    priority                   = 100
-    direction                  = "Outbound"
-    access                     = "Allow"
-    protocol                   = "*"
-    source_port_range          = "*"
-    destination_port_range     = "53"
-    source_address_prefix      = "*"
-    destination_address_prefix = "AzurePlatformDNS"
+    name                   = "AllowAzureDNS"
+    priority               = 100
+    direction              = "Outbound"
+    access                 = "Allow"
+    protocol               = "*"
+    source_port_range      = "*"
+    destination_port_range = "53"
+    source_address_prefix  = "*"
+    # Azure permits AzurePlatformDNS only in a deny rule. Use its documented
+    # resolver IP here so the explicit outbound deny-all rule cannot block DNS.
+    destination_address_prefix = "168.63.129.16"
   }
 
   security_rule {

@@ -346,6 +346,12 @@ variable "private_runner_vm_size" {
   default     = "Standard_D2s_v5"
 }
 
+variable "private_runner_encryption_at_host_enabled" {
+  description = "Enable only after the Microsoft.Compute/EncryptionAtHost subscription feature is registered. Managed disks remain encrypted at rest in either mode."
+  type        = bool
+  default     = false
+}
+
 variable "kyverno_chart_version" {
   description = "Pinned Kyverno Helm chart version used by the add-ons module."
   type        = string
