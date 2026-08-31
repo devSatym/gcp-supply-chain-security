@@ -57,6 +57,12 @@ RUNNER_LABELS="__RUNNER_LABELS__"
 # bootstrap sources before package installation so every package transport is
 # encrypted; repository metadata and package signatures remain verified too.
 find /etc/apt -type f \( -name 'sources.list' -o -name '*.sources' -o -name '*.list' \) -exec sed -i 's|http://|https://|g' {} +
+# Some Azure regional Ubuntu mirrors can be temporarily unavailable. Fail over
+# to Canonical's HTTPS archive before updating package metadata; both paths
+# retain signed APT metadata and package signature verification.
+if ! timeout 15 curl -4 -fsSI https://azure.archive.ubuntu.com/ubuntu/dists/noble/InRelease >/dev/null; then
+  find /etc/apt -type f \( -name 'sources.list' -o -name '*.sources' -o -name '*.list' \) -exec sed -i 's|https://azure\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' {} +
+fi
 apt-get update -qq
 apt-get install -y -qq ca-certificates curl git gnupg jq docker.io unzip
 systemctl enable --now docker
@@ -128,5 +134,16 @@ az vm run-command invoke \
   --query 'value[0].message' \
   --output tsv \
   | sed -E 's/[A-Za-z0-9_]{30,}/[redacted]/g'
+
+runner_online=false
+for _ in $(seq 1 12); do
+  runner_status="$(gh api "repos/${REPOSITORY}/actions/runners" --paginate --jq ".runners[] | select(.name == \"${RUNNER_NAME}\") | .status" 2>/dev/null || true)"
+  if [[ "$runner_status" == "online" ]]; then
+    runner_online=true
+    break
+  fi
+  sleep 5
+done
+[[ "$runner_online" == "true" ]] || die "Azure Run Command completed but ${RUNNER_NAME} is not online in GitHub"
 
 printf 'Private runner %s registered for %s with labels: %s\n' "$RUNNER_NAME" "$REPOSITORY" "$RUNNER_LABELS"
