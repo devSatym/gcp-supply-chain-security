@@ -73,7 +73,11 @@ jobs:
         run: |
           docker run --rm -i hadolint/hadolint@sha256:9259e253a4e299b50c92006149dd3a171c7ea3c5bd36f060022b5d2c1ff0fbbe < Dockerfile
 
-      - name: Trivy filesystem and IaC scan
+      # Trivy emits every severity into a SARIF report by design. Keep the
+      # release gate in a table-format invocation so its exit code is limited
+      # to the configured HIGH/CRITICAL threshold; generate SARIF separately
+      # for complete code-scanning visibility without changing gate semantics.
+      - name: Trivy blocking filesystem and IaC scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
@@ -81,6 +85,18 @@ jobs:
           scanners: vuln,secret,config
           severity: CRITICAL,HIGH
           exit-code: '1'
+          format: table
+          trivyignores: .trivyignore
+
+      - name: Generate complete Trivy DevSecOps SARIF
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,config
+          severity: CRITICAL,HIGH
+          exit-code: '0'
           format: sarif
           output: trivy-devsecops.sarif
           trivyignores: .trivyignore
