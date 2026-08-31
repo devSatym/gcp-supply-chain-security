@@ -225,6 +225,20 @@ resource "azurerm_role_assignment" "github_terraform_state_blob_contributor" {
   description                      = "Terraform convergence identity may read and lock only remote Azure Blob state."
 }
 
+# The AzureRM provider refreshes role assignments before deciding whether an
+# update is required. This management-plane Reader grant is limited to the
+# state storage account; it does not grant data-plane Blob access by itself.
+resource "azurerm_role_assignment" "github_terraform_state_reader" {
+  count = var.enable_github_terraform_identity ? 1 : 0
+
+  scope                            = var.terraform_state_storage_account_id
+  role_definition_name             = "Reader"
+  principal_id                     = azurerm_user_assigned_identity.github_terraform[0].principal_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+  description                      = "Terraform convergence identity may refresh only the remote-state role assignments."
+}
+
 # Kyverno's admission controller is the only Kubernetes ServiceAccount trusted
 # to exchange an AKS OIDC token for this identity. It can read the application
 # and Cosign metadata repositories, but cannot write or enumerate all repos.
