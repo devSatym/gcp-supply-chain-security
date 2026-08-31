@@ -209,10 +209,14 @@ jobs:
 
           rendered_values="${RUNNER_TEMP}/azure-values.release.yaml"
           rendered_manifest="${RUNNER_TEMP}/supply-chain-azure-release.yaml"
-          envsubst '${ACR_LOGIN_SERVER} ${ACR_APPLICATION_REPOSITORY} ${IMAGE_DIGEST}' \
+          envsubst_variables='${ACR_LOGIN_SERVER} ${ACR_APPLICATION_REPOSITORY} ${IMAGE_DIGEST}'
+          envsubst "$envsubst_variables" \
             < k8s/azure/supply-chain-demo/values.release.yaml.template \
             > "$rendered_values"
-          ! grep -Eq '\$\{|REPLACE_WITH|:latest' "$rendered_values"
+          if grep -Eq '\$\{|REPLACE_WITH|:latest' "$rendered_values"; then
+            echo "Rendered release values contain an unresolved or mutable image reference" >&2
+            exit 1
+          fi
 
           helm template supply-chain-demo k8s/azure/supply-chain-demo \
             --values "$rendered_values" > "$rendered_manifest"

@@ -55,7 +55,18 @@ jobs:
           kubectl -n supply-chain port-forward service/supply-chain-demo 8080:80 > "${RUNNER_TEMP}/port-forward.log" 2>&1 &
           port_forward_pid=$!
           trap 'kill "$port_forward_pid" 2>/dev/null || true' EXIT
-          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/health && break || sleep 1; done
+          service_ready=false
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/health; then
+              service_ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$service_ready" != true ]]; then
+            echo "Private supply-chain service did not become ready for DAST" >&2
+            exit 1
+          fi
           docker run --rm --network host -v "${RUNNER_TEMP}:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t http://127.0.0.1:8080 -J zap-report.json -r zap-report.html -m 2
 
