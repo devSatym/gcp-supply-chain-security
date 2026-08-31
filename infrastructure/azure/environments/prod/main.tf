@@ -117,11 +117,12 @@ module "supply_chain" {
   aks_oidc_issuer_url      = module.aks.oidc_issuer_url
   aks_kubelet_principal_id = module.aks.kubelet_identity_object_id
 
-  github_oidc_subject                = var.github_oidc_subject
-  enable_github_terraform_identity   = var.enable_github_terraform_identity
-  terraform_workload_scope_id        = module.network.resource_group_id
-  terraform_aks_scope_id             = module.aks.cluster_id
-  terraform_state_storage_account_id = var.terraform_state_storage_account_id
+  github_oidc_subject                    = var.github_oidc_subject
+  enable_github_terraform_identity       = var.enable_github_terraform_identity
+  terraform_workload_scope_id            = module.network.resource_group_id
+  terraform_aks_scope_id                 = module.aks.cluster_id
+  terraform_state_storage_account_id     = var.terraform_state_storage_account_id
+  terraform_state_reader_assignment_name = var.terraform_state_reader_assignment_name
 
   # This is flipped only by the final closure apply, after the endpoints are
   # created and the runner has proven private DNS/connectivity.

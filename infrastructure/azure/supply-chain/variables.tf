@@ -99,6 +99,13 @@ variable "terraform_state_storage_account_id" {
   nullable    = true
 }
 
+variable "terraform_state_reader_assignment_name" {
+  description = "Optional existing Azure role-assignment UUID for the remote-state Reader grant. Set when Terraform adopts a bootstrap assignment so convergence never replaces it."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
 variable "aks_oidc_issuer_url" {
   description = "OIDC issuer URL emitted by the private AKS cluster. It is used only for Kubernetes workload identity credentials."
   type        = string

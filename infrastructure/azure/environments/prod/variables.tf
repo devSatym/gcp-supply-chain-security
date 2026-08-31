@@ -304,6 +304,13 @@ variable "terraform_state_storage_account_id" {
   nullable    = true
 }
 
+variable "terraform_state_reader_assignment_name" {
+  description = "Existing remote-state Reader assignment UUID, used to adopt the bootstrap grant without replacing it."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
 variable "enable_private_runner" {
   description = "Create the no-public-IP private GitHub Actions runner VM. The one-time bootstrap script registers it without placing a registration token in Terraform state."
   type        = bool
