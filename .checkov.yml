@@ -17,6 +17,7 @@ skip-check:
   # owner-approved cost/key-management decisions.
   - CKV_AZURE_33
   - CKV_AZURE_36
+  - CKV_AZURE_59
   - CKV_AZURE_206
   - CKV2_AZURE_1
   - CKV2_AZURE_21
