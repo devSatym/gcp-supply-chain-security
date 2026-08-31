@@ -86,7 +86,7 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Upload Trivy DevSecOps SARIF
-        if: always()
+        if: always() && hashFiles('trivy-devsecops.sarif') != ''
         uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
         with:
           sarif_file: trivy-devsecops.sarif

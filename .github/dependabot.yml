@@ -4,29 +4,41 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
 
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: pip
     directory: /app
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: terraform
     directory: /infrastructure/azure/environments/prod
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: terraform
     directory: /infrastructure/azure/bootstrap-state
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: terraform
     directory: /infrastructure/azure/private-runner
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
