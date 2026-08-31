@@ -101,3 +101,10 @@ CVE-2026-57432
 # exceptions as soon as Debian publishes fixed libsqlite3-0 packages.
 CVE-2026-11822
 CVE-2026-11824
+
+# AZU-0010 recommends allowing Azure service bypass through the state-account
+# firewall. This platform deliberately keeps that bypass disabled: every state
+# operation uses Entra ID and comes from the explicitly allowed private runner
+# subnet or a break-glass owner IP while the private endpoint is introduced.
+# Reassess this exception if an Azure service genuinely needs data-plane access.
+AZU-0010

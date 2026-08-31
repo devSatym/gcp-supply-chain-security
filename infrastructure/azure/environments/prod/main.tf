@@ -53,6 +53,9 @@ module "network" {
   aks_api_server_subnet_address_prefixes     = var.aks_api_server_subnet_address_prefixes
   private_endpoints_subnet_address_prefixes  = var.private_endpoints_subnet_address_prefixes
   functions_subnet_address_prefixes          = var.functions_subnet_address_prefixes
+  private_runner_subnet_name                 = var.private_runner_subnet_name
+  private_runner_subnet_address_prefixes     = var.private_runner_subnet_address_prefixes
+  attach_nat_gateway_to_private_runner       = var.attach_nat_gateway_to_private_runner
   owner_ssh_allow_cidr                       = var.owner_ssh_allow_cidr
   enable_flow_logs                           = var.enable_flow_logs
   flow_logs_storage_account_name             = var.flow_logs_storage_account_name
@@ -114,11 +117,43 @@ module "supply_chain" {
   aks_oidc_issuer_url      = module.aks.oidc_issuer_url
   aks_kubelet_principal_id = module.aks.kubelet_identity_object_id
 
+  github_oidc_subject                = var.github_oidc_subject
+  enable_github_terraform_identity   = var.enable_github_terraform_identity
+  terraform_workload_scope_id        = module.network.resource_group_id
+  terraform_aks_scope_id             = module.aks.cluster_id
+  terraform_state_storage_account_id = var.terraform_state_storage_account_id
+
   # This is flipped only by the final closure apply, after the endpoints are
   # created and the runner has proven private DNS/connectivity.
   public_network_access_enabled = !var.disable_public_network_access
 
   tags = local.tags
+}
+
+module "private_runner" {
+  source = "../../private-runner"
+  count  = var.enable_private_runner ? 1 : 0
+
+  resource_group_name  = module.network.resource_group_name
+  location             = module.network.location
+  subnet_id            = module.network.private_runner_subnet_id
+  name_prefix          = var.name_prefix
+  admin_ssh_public_key = var.private_runner_admin_ssh_public_key
+  vm_size              = var.private_runner_vm_size
+  tags                 = local.tags
+}
+
+module "monitoring" {
+  source = "../../monitoring"
+  count  = var.enable_monitoring ? 1 : 0
+
+  resource_group_name = module.network.resource_group_name
+  location            = module.network.location
+  name_prefix         = var.name_prefix
+  aks_cluster_id      = module.aks.cluster_id
+  acr_id              = module.supply_chain.acr_id
+  retention_in_days   = var.log_analytics_retention_in_days
+  tags                = local.tags
 }
 
 module "kubernetes_addons" {

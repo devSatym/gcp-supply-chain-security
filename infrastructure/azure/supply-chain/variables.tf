@@ -61,6 +61,44 @@ variable "github_repository" {
   }
 }
 
+variable "github_oidc_subject" {
+  description = "Exact immutable GitHub Actions OIDC subject for trusted main. Obtain this from the repository OIDC customization response; never substitute a branch, PR, or environment subject."
+  type        = string
+  default     = "repo:devSatym@192846686/gcp-supply-chain-security@1343453581:ref:refs/heads/main"
+
+  validation {
+    condition     = var.github_oidc_subject == "repo:devSatym@192846686/gcp-supply-chain-security@1343453581:ref:refs/heads/main"
+    error_message = "github_oidc_subject must remain the immutable trusted-main subject for devSatym/gcp-supply-chain-security."
+  }
+}
+
+variable "enable_github_terraform_identity" {
+  description = "Create the separate main-only GitHub OIDC identity used for remote Terraform convergence."
+  type        = bool
+  default     = false
+}
+
+variable "terraform_workload_scope_id" {
+  description = "Resource ID of the workload resource group where the Terraform identity receives Contributor and User Access Administrator. Required only when enable_github_terraform_identity is true."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "terraform_aks_scope_id" {
+  description = "Resource ID of the private AKS cluster where the Terraform identity receives cluster-admin. Required only when enable_github_terraform_identity is true."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "terraform_state_storage_account_id" {
+  description = "Resource ID of the Azure Blob remote-state storage account where the Terraform identity receives data-plane state access. Required only when enable_github_terraform_identity is true."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
 variable "aks_oidc_issuer_url" {
   description = "OIDC issuer URL emitted by the private AKS cluster. It is used only for Kubernetes workload identity credentials."
   type        = string

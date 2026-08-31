@@ -902,11 +902,12 @@ A region may only be selected automatically when the user has explicitly allowed
 
 ---
 
-## Existing cloud implementations
+## Active cloud implementation
 
-Do not modify unrelated GCP/AWS/Azure implementations merely because another cloud implementation is being added.
-
-Cloud-specific work should remain additive unless the task explicitly requires shared refactoring.
+Azure is the authoritative implementation for this repository. The historical
+GCP baseline is preserved only by the immutable `final-gcp-commit` Git tag;
+do not reintroduce active GCP workflows, manifests, Terraform, or cloud
+changes unless the user explicitly asks to recover that baseline on a branch.
 
 ---
 

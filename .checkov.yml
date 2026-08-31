@@ -1,0 +1,47 @@
+# Checkov runs on every PR and scheduled security scan with the current pinned
+# upstream image. The rules below are reviewed exceptions, not soft failures:
+# each has a compensating control and an explicit condition for removal in
+# docs/azure/controls-matrix.md.
+skip-check:
+  # AKS architecture: private Azure RBAC, Kyverno, and managed encryption.
+  - CKV_AZURE_116
+  - CKV_AZURE_117
+  - CKV_AZURE_168
+  - CKV_AZURE_170
+  - CKV_AZURE_172
+  - CKV_AZURE_226
+  - CKV_AZURE_227
+  - CKV_AZURE_232
+
+  # State and Function Storage: AzureRM v4 split logging resources and
+  # owner-approved cost/key-management decisions.
+  - CKV_AZURE_33
+  - CKV_AZURE_36
+  - CKV_AZURE_59
+  - CKV_AZURE_206
+  - CKV2_AZURE_1
+  - CKV2_AZURE_21
+
+  # Consumption-plan Discord alerting is opt-in; its private closure is
+  # performed only after owner input and private endpoint probes succeed.
+  - CKV_AZURE_212
+  - CKV_AZURE_221
+  - CKV_AZURE_225
+
+  # The runner uses cloud-init (not a VM extension) and has no public IP.
+  - CKV_AZURE_50
+
+  # Single-region ACR relies on Cosign + Kyverno. Public access remains only
+  # during the explicitly staged private-endpoint bootstrap.
+  - CKV_AZURE_139
+  - CKV_AZURE_164
+  - CKV_AZURE_165
+  - CKV_AZURE_166
+  - CKV_AZURE_233
+
+  # Optional VNet flow logs need Azure Network Watcher service integration;
+  # AKS API-server VNet integration uses its dedicated delegated subnet.
+  - CKV2_AZURE_31
+  - CKV2_AZURE_33
+  - CKV2_AZURE_40
+  - CKV2_AZURE_41

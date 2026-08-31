@@ -24,6 +24,8 @@ locals {
     cosign_repository      = var.cosign_repository
   }))
 
+  restricted_workload_policy = yamldecode(file("${path.module}/../../../policy/azure/kyverno/restricted-workloads.yaml"))
+
   argocd_values = file("${path.module}/argocd-values.yaml")
 
   # Keep the reviewed Argo Application manifest as the single source of
@@ -61,7 +63,10 @@ resource "helm_release" "kyverno_policy" {
   timeout          = 300
 
   values = [yamlencode({
-    policy = local.kyverno_policy
+    policies = [
+      local.kyverno_policy,
+      local.restricted_workload_policy,
+    ]
   })]
 
   depends_on = [helm_release.kyverno]

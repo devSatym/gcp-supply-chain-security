@@ -15,6 +15,8 @@ spec:
       labels:
         app: {{ include "supply-chain-demo.name" . }}
     spec:
+      serviceAccountName: {{ include "supply-chain-demo.fullname" . }}
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
         runAsUser: {{ .Values.securityContext.runAsUser }}
@@ -28,11 +30,18 @@ spec:
           securityContext:
             allowPrivilegeEscalation: {{ .Values.containerSecurityContext.allowPrivilegeEscalation }}
             readOnlyRootFilesystem: {{ .Values.containerSecurityContext.readOnlyRootFilesystem }}
+            runAsNonRoot: {{ .Values.containerSecurityContext.runAsNonRoot }}
             capabilities:
               drop:
                 - ALL
           ports:
             - containerPort: {{ .Values.containerPort }}
+          env:
+            - name: TMPDIR
+              value: /tmp
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           resources:
 {{ toYaml .Values.resources | indent 12 }}
           readinessProbe:
@@ -45,4 +54,8 @@ spec:
               port: {{ .Values.containerPort }}
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
 {{- end }}

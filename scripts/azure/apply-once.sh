@@ -13,7 +13,7 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 PROD_SOURCE="${REPO_ROOT}/infrastructure/azure/environments/prod"
-DEFAULT_VAR_FILE="${PROD_SOURCE}/terraform.tfvars"
+DEFAULT_VAR_FILE="${PROD_SOURCE}/platform.auto.tfvars.json"
 DEFAULT_BACKEND_FILE="${REPO_ROOT}/infrastructure/azure/bootstrap-state/backend.hcl"
 
 MODE="core"
@@ -37,7 +37,7 @@ Modes:
 
 Inputs:
   --var-file PATH       Owner-supplied non-secret production tfvars. Defaults
-                        to infrastructure/azure/environments/prod/terraform.tfvars.
+                        to infrastructure/azure/environments/prod/platform.auto.tfvars.json.
   --backend-config PATH Owner-supplied azurerm backend config. If omitted, the
                         script uses TFSTATE_* variables (and .codex/azure-values.env
                         when present) without creating a backend file.
@@ -256,7 +256,7 @@ probe_private_api() {
   local private_fqdn
   private_fqdn="$(read_output private_fqdn)"
   [[ -n "$private_fqdn" ]] || die "Terraform did not return the private AKS FQDN"
-  [[ "$private_fqdn" == *privatelink* ]] || die "AKS output is not a private FQDN; refusing public fallback"
+  [[ "$private_fqdn" == *privatelink* || "$private_fqdn" == *.private.*.azmk8s.io ]] || die "AKS output is not a private FQDN; refusing public fallback"
   probe_host "private AKS API" "$private_fqdn"
 }
 

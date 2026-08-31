@@ -93,8 +93,11 @@ if "^sha256:[0-9a-f]{64}$" not in deploy_text:
 
 static = yaml.safe_load(static_text)
 static_permissions = static.get("permissions", static.get(True, {}).get("permissions", {}))
-if static_permissions != {"contents": "read"}:
-    fail("static validation must have contents: read only")
+if static_permissions != {}:
+    fail("static validation must default to no token permissions")
+for job_name in ("yaml-and-policy", "terraform"):
+    if static["jobs"][job_name].get("permissions") != {"contents": "read"}:
+        fail(f"static validation job {job_name} must receive contents: read only")
 if "id-token: write" in static_text or "azure/login" in static_text:
     fail("static validation must not have Azure authentication authority")
 for required in (

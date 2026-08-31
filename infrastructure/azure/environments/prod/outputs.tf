@@ -38,6 +38,26 @@ output "github_ci_client_id" {
   value       = module.supply_chain.github_ci_client_id
 }
 
+output "github_terraform_client_id" {
+  description = "GitHub variable AZURE_TERRAFORM_CLIENT_ID used only by the trusted private runner convergence workflow."
+  value       = module.supply_chain.github_terraform_client_id
+}
+
+output "private_runner_name" {
+  description = "Private GitHub Actions runner VM name when enabled; registration is performed outside Terraform with a short-lived JIT configuration."
+  value       = try(module.private_runner[0].name, null)
+}
+
+output "private_runner_private_ip_address" {
+  description = "Private address of the no-public-IP GitHub Actions runner VM when enabled."
+  value       = try(module.private_runner[0].private_ip_address, null)
+}
+
+output "log_analytics_workspace_id" {
+  description = "Central AKS and ACR diagnostic workspace ID when monitoring is enabled."
+  value       = try(module.monitoring[0].workspace_id, null)
+}
+
 output "github_ci_aks_cluster_user_role_assignment_id" {
   description = "Role-assignment ID granting the GitHub CI identity AKS Cluster User access (non-admin kubeconfig retrieval only)."
   value       = azurerm_role_assignment.github_ci_aks_cluster_user.id

@@ -28,6 +28,9 @@ on:
         required: true
         type: string
 
+# The verification job receives the minimal Azure OIDC grant below.
+permissions: {}
+
 env:
   ACR_NAME: ${{ inputs.acr_name }}
   ACR_LOGIN_SERVER: ${{ inputs.acr_login_server }}
@@ -35,17 +38,18 @@ env:
   COSIGN_REPOSITORY: ${{ inputs.cosign_repository }}
   TRUSTED_REF: refs/heads/main
 
-permissions:
-  contents: read
-  id-token: write
-
 jobs:
   verify:
     name: Verify Azure Signature and Attestations
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, azure-private, azure-trusted]
+    permissions:
+      contents: read
+      id-token: write # OIDC-only Azure registry verification.
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Authenticate to Azure Container Registry
         uses: ./.github/actions/azure-auth

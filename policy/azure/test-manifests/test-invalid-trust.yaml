@@ -6,6 +6,10 @@ metadata:
     supply-chain-security-test: invalid-trust
 spec:
   restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: invalid-trust-app
       # This fixture is intentionally covered by the test-only policy in
@@ -16,3 +20,6 @@ spec:
       securityContext:
         runAsNonRoot: true
         allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]

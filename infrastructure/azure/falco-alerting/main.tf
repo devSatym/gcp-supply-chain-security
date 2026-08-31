@@ -96,17 +96,32 @@ resource "azurerm_key_vault_secret" "discord_webhook" {
 # configured by azurerm_storage_account_queue_properties below, which is the
 # supported AzureRM v4 resource.
 resource "azurerm_storage_account" "function" { # nosemgrep
-  name                            = local.function_storage_name
-  resource_group_name             = var.resource_group_name
-  location                        = var.location
-  account_tier                    = "Standard"
-  account_replication_type        = "LRS"
-  min_tls_version                 = "TLS1_2"
-  https_traffic_only_enabled      = true
-  allow_nested_items_to_be_public = false
-  shared_access_key_enabled       = false
-  public_network_access_enabled   = var.public_network_access_enabled
-  tags                            = var.tags
+  name                              = local.function_storage_name
+  resource_group_name               = var.resource_group_name
+  location                          = var.location
+  account_tier                      = "Standard"
+  account_replication_type          = "LRS"
+  min_tls_version                   = "TLS1_2"
+  https_traffic_only_enabled        = true
+  allow_nested_items_to_be_public   = false
+  shared_access_key_enabled         = false
+  default_to_oauth_authentication   = true
+  infrastructure_encryption_enabled = true
+  public_network_access_enabled     = var.public_network_access_enabled
+
+  blob_properties {
+    versioning_enabled = true
+
+    delete_retention_policy {
+      days = 30
+    }
+
+    container_delete_retention_policy {
+      days = 30
+    }
+  }
+
+  tags = var.tags
 }
 
 resource "azurerm_storage_account_queue_properties" "function" {

@@ -95,6 +95,19 @@ resource "azurerm_subnet" "functions" {
   }
 }
 
+# The runner is deliberately isolated from AKS nodes and has no public IP.
+# It reaches GitHub and package registries only through the controlled NAT
+# gateway, while private DNS resolves AKS and Private Link endpoints.
+resource "azurerm_subnet" "private_runner" {
+  name                 = var.private_runner_subnet_name
+  resource_group_name  = azurerm_resource_group.workload.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = var.private_runner_subnet_address_prefixes
+
+  default_outbound_access_enabled = false
+  service_endpoints               = ["Microsoft.Storage"]
+}
+
 resource "azurerm_network_security_group" "aks_nodes" {
   name                = "${var.vnet_name}-aks-nodes-nsg"
   location            = azurerm_resource_group.workload.location
@@ -158,6 +171,87 @@ resource "azurerm_network_security_group" "private_endpoints" {
   tags                = local.tags
 }
 
+resource "azurerm_network_security_group" "private_runner" {
+  name                = "${var.vnet_name}-private-runner-nsg"
+  location            = azurerm_resource_group.workload.location
+  resource_group_name = azurerm_resource_group.workload.name
+  tags                = local.tags
+
+  # There is no operational inbound path to the runner. Azure Run Command
+  # uses the VM agent through the control plane rather than SSH/RDP.
+  security_rule {
+    name                       = "DenySSH"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "DenyRDP"
+    priority                   = 101
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "3389"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowAzureDNS"
+    priority                   = 100
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "53"
+    source_address_prefix      = "*"
+    destination_address_prefix = "AzurePlatformDNS"
+  }
+
+  security_rule {
+    name                       = "AllowPrivateHttps"
+    priority                   = 110
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "*"
+    destination_address_prefix = "VirtualNetwork"
+  }
+
+  security_rule {
+    name                       = "AllowInternetHttps"
+    priority                   = 120
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "*"
+    destination_address_prefix = "Internet"
+  }
+
+  security_rule {
+    name                       = "DenyOtherOutbound"
+    priority                   = 4096
+    direction                  = "Outbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
 resource "azurerm_subnet_network_security_group_association" "aks_nodes" {
   subnet_id                 = azurerm_subnet.aks_nodes.id
   network_security_group_id = azurerm_network_security_group.aks_nodes.id
@@ -171,6 +265,11 @@ resource "azurerm_subnet_network_security_group_association" "functions" {
 resource "azurerm_subnet_network_security_group_association" "private_endpoints" {
   subnet_id                 = azurerm_subnet.private_endpoints.id
   network_security_group_id = azurerm_network_security_group.private_endpoints.id
+}
+
+resource "azurerm_subnet_network_security_group_association" "private_runner" {
+  subnet_id                 = azurerm_subnet.private_runner.id
+  network_security_group_id = azurerm_network_security_group.private_runner.id
 }
 
 # A Standard, static public IP is used only by the NAT Gateway. Nodes and pods
@@ -207,6 +306,13 @@ resource "azurerm_subnet_nat_gateway_association" "functions" {
   count = var.attach_nat_gateway_to_functions ? 1 : 0
 
   subnet_id      = azurerm_subnet.functions.id
+  nat_gateway_id = azurerm_nat_gateway.main.id
+}
+
+resource "azurerm_subnet_nat_gateway_association" "private_runner" {
+  count = var.attach_nat_gateway_to_private_runner ? 1 : 0
+
+  subnet_id      = azurerm_subnet.private_runner.id
   nat_gateway_id = azurerm_nat_gateway.main.id
 }
 
@@ -262,10 +368,23 @@ resource "azurerm_storage_account" "flow_logs" { # nosemgrep
   account_kind             = "StorageV2"
   account_replication_type = var.flow_logs_storage_account_replication_type
 
-  https_traffic_only_enabled      = true
-  min_tls_version                 = "TLS1_2"
-  allow_nested_items_to_be_public = false
-  public_network_access_enabled   = true
+  https_traffic_only_enabled        = true
+  min_tls_version                   = "TLS1_2"
+  allow_nested_items_to_be_public   = false
+  infrastructure_encryption_enabled = true
+  public_network_access_enabled     = true
+
+  blob_properties {
+    versioning_enabled = true
+
+    delete_retention_policy {
+      days = 30
+    }
+
+    container_delete_retention_policy {
+      days = 30
+    }
+  }
 
   # Network Watcher is a trusted Azure service. Do not reuse this account for
   # another workload because the Flow Log resource manages its lifecycle rule.

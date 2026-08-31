@@ -1,0 +1,45 @@
+# Defense-in-depth baseline for the application namespace. Pod Security
+# Admission provides the same restricted profile at namespace admission time;
+# this policy makes the critical workload constraints explicit and auditable.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: supply-chain-restricted-workloads
+  annotations:
+    policies.kyverno.io/title: Restricted Supply Chain Workloads
+    policies.kyverno.io/category: Pod Security Standards
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-digest-pinned-non-root-containers
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - supply-chain
+      validate:
+        message: Supply-chain Pods must use digest-pinned, non-root, read-only containers with no Linux capabilities.
+        pattern:
+          spec:
+            =(hostNetwork): false
+            =(hostPID): false
+            =(hostIPC): false
+            automountServiceAccountToken: false
+            securityContext:
+              runAsNonRoot: true
+              seccompProfile:
+                type: RuntimeDefault
+            containers:
+              - image: "*@sha256:*"
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  runAsNonRoot: true
+                  capabilities:
+                    drop:
+                      - ALL

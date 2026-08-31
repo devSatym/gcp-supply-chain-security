@@ -44,10 +44,8 @@ concurrency:
   group: azure-deploy-${{ github.ref }}
   cancel-in-progress: false
 
-permissions:
-  contents: read
-  id-token: write
-  security-events: write
+# Reusable jobs receive only the permissions they explicitly request below.
+permissions: {}
 
 jobs:
   pr-image-scan:
@@ -56,10 +54,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
+      security-events: write # Upload pull-request image Trivy SARIF evidence.
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Build image for local scan
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -95,6 +95,10 @@ jobs:
     name: Azure Build and Push
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.inputs.confirm == 'deploy')
     uses: ./.github/workflows/azure-build-push.yml
+    permissions:
+      contents: read
+      id-token: write # Pass OIDC authority only to the trusted build job.
+      security-events: write # Permit the reusable image scan SARIF upload.
     with:
       image_tag: ${{ github.sha }}
       push: true
@@ -108,13 +112,18 @@ jobs:
   sbom-vex:
     name: Azure SBOM and VEX (non-blocking)
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.inputs.confirm == 'deploy')
-    uses: ./.github/workflows/sbom-vex.yml
+    uses: ./.github/workflows/azure-sbom-vex.yml
+    permissions:
+      contents: read
 
   sign-attest:
     name: Azure Sign and Attest
     needs: build-push
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/azure-sign-attest.yml
+    permissions:
+      contents: read
+      id-token: write # Azure OIDC and keyless Cosign signing.
     with:
       digest: ${{ needs.build-push.outputs.digest }}
       acr_name: ${{ vars.ACR_NAME }}
@@ -130,6 +139,9 @@ jobs:
     needs: [build-push, sign-attest]
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/azure-verify.yml
+    permissions:
+      contents: read
+      id-token: write # Azure OIDC-only registry verification.
     with:
       digest: ${{ needs.build-push.outputs.digest }}
       acr_name: ${{ vars.ACR_NAME }}
@@ -145,6 +157,9 @@ jobs:
     needs: [build-push, verify]
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/azure-lock-image.yml
+    permissions:
+      contents: read
+      id-token: write # Azure OIDC-only manifest-lock operation.
     with:
       digest: ${{ needs.build-push.outputs.digest }}
       acr_name: ${{ vars.ACR_NAME }}
@@ -163,7 +178,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Commit the rendered immutable digest promotion to main.
     env:
       ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
       ACR_APPLICATION_REPOSITORY: ${{ vars.ACR_REPOSITORY }}
@@ -171,6 +186,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Render digest-pinned release values
         id: render
@@ -192,10 +209,14 @@ jobs:
 
           rendered_values="${RUNNER_TEMP}/azure-values.release.yaml"
           rendered_manifest="${RUNNER_TEMP}/supply-chain-azure-release.yaml"
-          envsubst '${ACR_LOGIN_SERVER} ${ACR_APPLICATION_REPOSITORY} ${IMAGE_DIGEST}' \
+          envsubst_variables="\${ACR_LOGIN_SERVER} \${ACR_APPLICATION_REPOSITORY} \${IMAGE_DIGEST}"
+          envsubst "$envsubst_variables" \
             < k8s/azure/supply-chain-demo/values.release.yaml.template \
             > "$rendered_values"
-          ! grep -Eq '\$\{|REPLACE_WITH|:latest' "$rendered_values"
+          if grep -Eq '\$\{|REPLACE_WITH|:latest' "$rendered_values"; then
+            echo "Rendered release values contain an unresolved or mutable image reference" >&2
+            exit 1
+          fi
 
           helm template supply-chain-demo k8s/azure/supply-chain-demo \
             --values "$rendered_values" > "$rendered_manifest"

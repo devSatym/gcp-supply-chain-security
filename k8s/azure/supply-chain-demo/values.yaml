@@ -4,6 +4,13 @@
 workload:
   enabled: false
 
+namespace:
+  name: supply-chain
+  podSecurity:
+    enforce: restricted
+    audit: restricted
+    warn: restricted
+
 replicaCount: 2
 
 image:
@@ -26,6 +33,7 @@ securityContext:
 containerSecurityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
+  runAsNonRoot: true
 
 resources:
   requests:
@@ -42,3 +50,13 @@ probes:
   liveness:
     initialDelaySeconds: 5
     periodSeconds: 10
+
+networkPolicy:
+  # AKS node and Azure CNI overlay Pod ranges. Only in-cluster calls through
+  # Service/port-forward are accepted; no public LoadBalancer is created.
+  allowedIngressCIDRs:
+    - 10.20.0.0/16
+    - 10.244.0.0/16
+
+pdb:
+  minAvailable: 1

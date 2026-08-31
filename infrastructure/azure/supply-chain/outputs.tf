@@ -49,13 +49,23 @@ output "github_ci_principal_id" {
 }
 
 output "github_ci_federated_identity_credential_id" {
-  description = "Resource ID of the GitHub main-branch federated identity credential."
-  value       = azurerm_federated_identity_credential.github_ci_main.id
+  description = "Resource ID of the immutable GitHub trusted-main federated identity credential."
+  value       = azurerm_federated_identity_credential.github_ci_main_immutable.id
 }
 
 output "github_ci_oidc_subject" {
   description = "Exact GitHub OIDC subject trusted by the CI managed identity."
   value       = local.github_ci_subject
+}
+
+output "github_terraform_client_id" {
+  description = "GitHub variable AZURE_TERRAFORM_CLIENT_ID for main-only remote Terraform convergence."
+  value       = try(azurerm_user_assigned_identity.github_terraform[0].client_id, null)
+}
+
+output "github_terraform_principal_id" {
+  description = "Object ID of the separate GitHub Terraform managed identity when enabled."
+  value       = try(azurerm_user_assigned_identity.github_terraform[0].principal_id, null)
 }
 
 output "kyverno_client_id" {

@@ -61,6 +61,29 @@ variable "functions_subnet_address_prefixes" {
   default     = ["10.0.48.0/24"]
 }
 
+variable "private_runner_subnet_name" {
+  description = "Name of the isolated no-public-IP subnet for the private GitHub Actions runner."
+  type        = string
+  default     = "snet-ci-runner"
+}
+
+variable "private_runner_subnet_address_prefixes" {
+  description = "Address prefixes for the private GitHub Actions runner subnet."
+  type        = list(string)
+  default     = ["10.0.64.0/24"]
+
+  validation {
+    condition     = alltrue([for cidr in var.private_runner_subnet_address_prefixes : can(cidrnetmask(cidr))])
+    error_message = "private_runner_subnet_address_prefixes must contain valid CIDRs."
+  }
+}
+
+variable "attach_nat_gateway_to_private_runner" {
+  description = "Route private runner egress through the controlled NAT Gateway."
+  type        = bool
+  default     = true
+}
+
 variable "owner_ssh_allow_cidr" {
   description = "Operator CIDR permitted to SSH to AKS nodes for the private-network jump host."
   type        = string
@@ -260,6 +283,67 @@ variable "cosign_metadata_repository" {
   description = "Separate mutable ACR repository path for Cosign signature and attestation indexes."
   type        = string
   default     = "supply-chain-security-attestations/supply-chain-demo"
+}
+
+variable "github_oidc_subject" {
+  description = "Exact immutable GitHub OIDC subject permitted to access Azure only from trusted main."
+  type        = string
+  default     = "repo:devSatym@192846686/gcp-supply-chain-security@1343453581:ref:refs/heads/main"
+}
+
+variable "enable_github_terraform_identity" {
+  description = "Create the separate GitHub OIDC identity for private-runner remote Terraform convergence."
+  type        = bool
+  default     = false
+}
+
+variable "terraform_state_storage_account_id" {
+  description = "Remote-state Azure Storage Account resource ID. Required only when enable_github_terraform_identity is true."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "enable_private_runner" {
+  description = "Create the no-public-IP private GitHub Actions runner VM. The one-time bootstrap script registers it without placing a registration token in Terraform state."
+  type        = bool
+  default     = false
+}
+
+variable "enable_monitoring" {
+  description = "Collect all AKS and ACR diagnostic categories in the central Log Analytics workspace."
+  type        = bool
+  default     = true
+}
+
+variable "log_analytics_retention_in_days" {
+  description = "Central AKS/ACR diagnostic retention in days; longer paid retention remains owner-controlled."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.log_analytics_retention_in_days >= 30 && var.log_analytics_retention_in_days <= 730
+    error_message = "log_analytics_retention_in_days must be between 30 and 730."
+  }
+}
+
+variable "private_runner_admin_ssh_public_key" {
+  description = "Ephemeral OpenSSH public key required by the VM API while no network SSH path exists. Required only when enable_private_runner is true."
+  type        = string
+  sensitive   = true
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.private_runner_admin_ssh_public_key == null || can(regex("^ssh-(ed25519|rsa) ", var.private_runner_admin_ssh_public_key))
+    error_message = "private_runner_admin_ssh_public_key must be a valid OpenSSH ed25519 or RSA public key."
+  }
+}
+
+variable "private_runner_vm_size" {
+  description = "VM size for the private build, signing, scanning, and Terraform runner."
+  type        = string
+  default     = "Standard_D2s_v5"
 }
 
 variable "kyverno_chart_version" {

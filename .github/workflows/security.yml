@@ -1,0 +1,158 @@
+name: DevSecOps Security Gates
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 2 * * 1'
+  workflow_dispatch:
+
+# Pull requests from a public fork never receive cloud authority or private
+# runner access. These checks use a clean GitHub-hosted runner only.
+permissions: {}
+
+concurrency:
+  group: devsecops-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Secret scanning (full history)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  codeql:
+    name: CodeQL (Python)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # Publish CodeQL results to GitHub code scanning.
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          languages: python
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          category: /language:python
+
+  static-and-dependencies:
+    name: SAST, dependency, container, IaC, and workflow policy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # Upload the non-blocking complete Trivy SARIF evidence.
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Python dependency audit and license inventory
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --disable-pip-version-check pip-audit pip-licenses
+          pip-audit -r app/requirements.txt
+          pip-licenses --format=json --output-file dependency-licenses.json
+
+      - name: Semgrep SAST
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src \
+            semgrep/semgrep@sha256:98c2572fced2474539fd27cab3207ebd8e95e4e7aab4c3b381fdc5e2641d9941 \
+            semgrep scan --config auto --error --exclude 'infrastructure/gke' --exclude 'infrastructure/vpc' .
+
+      - name: Hadolint Dockerfile policy
+        run: |
+          docker run --rm -i hadolint/hadolint@sha256:9259e253a4e299b50c92006149dd3a171c7ea3c5bd36f060022b5d2c1ff0fbbe < Dockerfile
+
+      # Trivy emits every severity into a SARIF report by design. Keep the
+      # release gate in a table-format invocation so its exit code is limited
+      # to the configured HIGH/CRITICAL threshold; generate SARIF separately
+      # for complete code-scanning visibility without changing gate semantics.
+      - name: Trivy blocking filesystem and IaC scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,config
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          format: table
+          trivyignores: .trivyignore
+
+      - name: Generate complete Trivy DevSecOps SARIF
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,config
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+          format: sarif
+          output: trivy-devsecops.sarif
+          trivyignores: .trivyignore
+
+      - name: Upload Trivy DevSecOps SARIF
+        if: always() && hashFiles('trivy-devsecops.sarif') != ''
+        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          sarif_file: trivy-devsecops.sarif
+          category: trivy-devsecops
+
+      - name: Checkov Azure Terraform policy scan
+        run: |
+          docker run --rm -v "$PWD:/tf:ro" -w /tf \
+            bridgecrew/checkov@sha256:7f4a961f7f029f6f4c1f154754a19bee603e027dc02fc916c008f9a3b8b20349 \
+            -d infrastructure/azure --framework terraform --quiet \
+            --config-file /tf/.checkov.yml
+
+      - name: Render the trusted release chart for OPA policy checks
+        run: |
+          helm template supply-chain-demo k8s/azure/supply-chain-demo \
+            --namespace supply-chain \
+            --values k8s/azure/supply-chain-demo/values.release.yaml.example \
+            > /tmp/supply-chain-release.yaml
+
+      - name: Enforce Kubernetes controls with OPA Conftest
+        run: |
+          docker run --rm -v "$PWD:/project:ro" -v /tmp:/tmp:ro \
+            openpolicyagent/conftest@sha256:12ecf3cda1517957d21e192586467c5f6b5fe5d2041a7899fa68e200f3e61856 \
+            test /tmp/supply-chain-release.yaml --policy /project/policy/azure/conftest
+
+      - name: Lint GitHub Actions and audit workflow security
+        run: |
+          set -Eeuo pipefail
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint" -color .github/workflows/*.yml
+          python3 -m pip install --disable-pip-version-check 'zizmor==1.30.0'
+          # Fail closed for actionable workflow-security findings; the
+          # pedantic low/info recommendations remain visible in logs.
+          zizmor --persona=pedantic --min-severity=medium .github/workflows
+
+      - name: Upload dependency license evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dependency-licenses-${{ github.sha }}
+          path: dependency-licenses.json
+          retention-days: 90
