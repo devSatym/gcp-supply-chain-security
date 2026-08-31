@@ -120,7 +120,10 @@ jobs:
 
       - name: Apply saved non-destructive plan
         working-directory: infrastructure/azure/environments/prod
-        run: terraform apply -input=false "${RUNNER_TEMP}/azure-platform.tfplan"
+        run: |
+          set -Eeuo pipefail
+          export TF_DATA_DIR="${RUNNER_TEMP}/terraform-data"
+          terraform apply -input=false "${RUNNER_TEMP}/azure-platform.tfplan"
 
       - name: Record convergence summary
         working-directory: infrastructure/azure/environments/prod
