@@ -64,7 +64,7 @@ if ! timeout 15 curl -4 -fsSI https://azure.archive.ubuntu.com/ubuntu/dists/nobl
   find /etc/apt -type f \( -name 'sources.list' -o -name '*.sources' -o -name '*.list' \) -exec sed -i 's|https://azure\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' {} +
 fi
 apt-get update -qq
-apt-get install -y -qq ca-certificates curl git gnupg jq docker.io unzip
+apt-get install -y -qq ca-certificates curl git gnupg jq docker.io unzip libicu74 libssl3t64 zlib1g
 systemctl enable --now docker
 
 if ! id gha >/dev/null 2>&1; then
@@ -109,11 +109,17 @@ echo "${asset_digest#sha256:}  runner.tgz" | sha256sum -c -
 tar xzf runner.tgz
 rm -f runner.tgz
 chown -R gha:gha /opt/actions-runner
-./bin/installdependencies.sh
+# The upstream helper currently does not recognize Ubuntu 24.04's libicu74
+# and exits successfully after trying incompatible versions. The supported
+# Noble libraries above are explicit; fail closed if the runner still has an
+# unresolved dynamic dependency.
+missing_runner_libraries="$(ldd ./bin/Runner.Listener | awk '/not found/ { print }')"
+[[ -z "$missing_runner_libraries" ]] || { echo "$missing_runner_libraries" >&2; exit 1; }
 
 install -m 0600 /dev/null /run/github-runner-registration-token
 printf '%s' "$RUNNER_TOKEN" > /run/github-runner-registration-token
 unset RUNNER_TOKEN
+export RUNNER_URL RUNNER_NAME RUNNER_LABELS
 runuser -u gha -- env RUNNER_TOKEN="$(cat /run/github-runner-registration-token)" bash -lc 'cd /opt/actions-runner && ./config.sh --unattended --replace --url "$RUNNER_URL" --token "$RUNNER_TOKEN" --name "$RUNNER_NAME" --labels "$RUNNER_LABELS" --work _work'
 rm -f /run/github-runner-registration-token
 ./svc.sh install gha
