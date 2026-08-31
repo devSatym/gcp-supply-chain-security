@@ -368,10 +368,23 @@ resource "azurerm_storage_account" "flow_logs" { # nosemgrep
   account_kind             = "StorageV2"
   account_replication_type = var.flow_logs_storage_account_replication_type
 
-  https_traffic_only_enabled      = true
-  min_tls_version                 = "TLS1_2"
-  allow_nested_items_to_be_public = false
-  public_network_access_enabled   = true
+  https_traffic_only_enabled        = true
+  min_tls_version                   = "TLS1_2"
+  allow_nested_items_to_be_public   = false
+  infrastructure_encryption_enabled = true
+  public_network_access_enabled     = true
+
+  blob_properties {
+    versioning_enabled = true
+
+    delete_retention_policy {
+      days = 30
+    }
+
+    container_delete_retention_policy {
+      days = 30
+    }
+  }
 
   # Network Watcher is a trusted Azure service. Do not reuse this account for
   # another workload because the Flow Log resource manages its lifecycle rule.

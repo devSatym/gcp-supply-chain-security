@@ -30,12 +30,13 @@ resource "azurerm_storage_account" "state" { # nosemgrep
   account_kind             = "StorageV2"
   account_replication_type = var.account_replication_type
 
-  https_traffic_only_enabled      = true
-  min_tls_version                 = "TLS1_2"
-  allow_nested_items_to_be_public = false
-  shared_access_key_enabled       = false
-  default_to_oauth_authentication = true
-  public_network_access_enabled   = var.public_network_access_enabled
+  https_traffic_only_enabled        = true
+  min_tls_version                   = "TLS1_2"
+  allow_nested_items_to_be_public   = false
+  shared_access_key_enabled         = false
+  default_to_oauth_authentication   = true
+  infrastructure_encryption_enabled = true
+  public_network_access_enabled     = var.public_network_access_enabled
 
   blob_properties {
     versioning_enabled = true

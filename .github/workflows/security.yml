@@ -109,12 +109,11 @@ jobs:
           category: trivy-devsecops
 
       - name: Checkov Azure Terraform policy scan
-        uses: bridgecrewio/checkov-action@99bb2caf247dfd9f03cf984373bc6043d4e32ebf # v12.1347.0
-        with:
-          directory: infrastructure/azure
-          framework: terraform
-          quiet: true
-          soft_fail: false
+        run: |
+          docker run --rm -v "$PWD:/tf:ro" -w /tf \
+            bridgecrew/checkov@sha256:7f4a961f7f029f6f4c1f154754a19bee603e027dc02fc916c008f9a3b8b20349 \
+            -d infrastructure/azure --framework terraform --quiet \
+            --config-file /tf/.checkov.yml
 
       - name: Render the trusted release chart for OPA policy checks
         run: |
