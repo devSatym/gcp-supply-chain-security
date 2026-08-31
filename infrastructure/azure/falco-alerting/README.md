@@ -19,6 +19,9 @@ export TF_VAR_discord_webhook_url='https://discord.com/api/webhooks/REPLACE_ME'
 export TF_VAR_discord_webhook_secret_version=1
 ```
 
-The generated archive is intentionally ignored in `.build/`. A production
-private-endpoint rollout must ensure both AKS and the Function have the
-required private DNS/network paths before disabling public service endpoints.
+The generated archive is intentionally ignored in `.build/`. The production
+root wires the delegated Functions subnet into `virtual_network_subnet_id`.
+A private-endpoint rollout must ensure both AKS and the Function have the
+required private DNS/network paths before disabling public service endpoints;
+the one-command runner probes Blob, Queue, Table, Key Vault, and Event Hubs
+before applying that closure.

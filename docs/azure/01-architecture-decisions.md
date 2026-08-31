@@ -39,6 +39,22 @@ Argo administration must execute from a controlled host with VNet and private
 DNS access. GitHub-hosted runners perform safe static validation but cannot be
 treated as a substitute for that network path.
 
+## Convergence uses one operator command with explicit phases
+
+`scripts/azure/apply-once.sh` is the normal operator entry point after the
+remote Blob backend exists. It uses saved Terraform plans and a disposable
+execution tree outside the repository, then converges foundation resources,
+probes the private AKS API, installs the add-ons/Argo Application, and—only in
+`private` mode—creates service Private Endpoints, probes them, and applies the
+separate public-access closure. The separate bootstrap root remains a
+one-time exception because Terraform cannot initialize a backend it is
+creating in the same run.
+
+The base Helm chart is inert until the trusted main workflow produces
+`values.release.yaml`. Promotion validates the exact `sha256:<64-hex>` digest
+after signature, SPDX SBOM, SLSA provenance, and registry locking, commits only
+that file, and lets the private Argo Application self-heal it into the cluster.
+
 ## Workload identities are separate
 
 - GitHub CI: ACR repository writer only.

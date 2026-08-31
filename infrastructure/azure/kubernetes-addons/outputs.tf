@@ -17,3 +17,13 @@ output "argocd_release_status" {
   description = "Status of the private Argo CD Helm release when installation is enabled."
   value       = try(helm_release.argocd[0].status, null)
 }
+
+output "argocd_application_name" {
+  description = "Name of the Terraform-installed Argo Application."
+  value       = try(helm_release.argocd_application[0].name, null)
+}
+
+output "argocd_application_release_status" {
+  description = "Status of the Helm release that installs the reviewed Argo Application."
+  value       = try(helm_release.argocd_application[0].status, null)
+}

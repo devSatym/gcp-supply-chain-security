@@ -9,6 +9,11 @@ for the reasons recorded below.
 Record command output or new Azure screenshots beside the relevant item; do not
 reuse GCP screenshots as Azure evidence.
 
+The 2026-08-30 live entries below are historical evidence from the prior
+private jump-host environment. On 2026-08-31, the authenticated subscription
+probe found neither the workload resource group nor the state resource group;
+therefore no current live deployment is claimed by this revision.
+
 ## Static validation
 
 - [x] `terraform fmt -check -recursive infrastructure/azure`
@@ -60,7 +65,7 @@ the next section.
 | Azure GitOps contract | `python3 policy/azure/tests/check_azure_gitops_contract.py` | PASS |
 | Argo CD chart values | `helm template argocd argo/argo-cd --version 10.3.3 --namespace argocd --values infrastructure/azure/kubernetes-addons/argocd-values.yaml` | PASS — 44 manifests rendered |
 | Azure Helm chart | `helm lint k8s/azure/supply-chain-demo` | PASS — 0 charts failed |
-| Azure Helm chart | `helm template supply-chain-demo k8s/azure/supply-chain-demo` + offline render assertion (Deployment/Service kinds present, deployment image digest-pinned) | PASS — 2 documents rendered |
+| Azure Helm chart | `helm template` base + `values.release.yaml.example` and offline render assertion | PASS — base is inert; release example renders Deployment/Service with digest-shaped image |
 | Azure workflows | YAML parse of `azure-static-validation.yml` after repair (see below) | PASS |
 | GCP policy tests | `python3 policy/tests/test_jmespath_conditions.py` | PASS — all Rule 3 conditions match the real provenance predicate shape |
 | GCP policy tests | `bash policy/tests/check-identity-consistency.sh` | PASS — all certificate identity references consistent |
@@ -80,44 +85,38 @@ the next section.
 
 ### Promotion/deployment additions (static validation only)
 
-- Repair Task 3 (Codex review follow-up): Function host storage private
-  connectivity completed. `infrastructure/azure/network/variables.tf` added
-  `privatelink.queue.core.windows.net` and `privatelink.table.core.windows.net`
-  defaults; the prod root gained `function_storage_queue` and
-  `function_storage_table` private endpoints (`queue`/`table` subresources,
-  each attached to its zone), all Function-storage endpoints gated on
-  `enable_private_endpoints && enable_runtime_alerting`. The Function host uses
-  identity-based `AzureWebJobsStorage` requiring exactly Blob, Queue, and
-  Table (no Files subresource — no `WEBSITE_CONTENTAZUREFILECONNECTIONSTRING`,
-  zip deployment). Validation: fmt -check on both directories PASS;
-  `terraform init -backend=false` + `validate` for network and prod roots in a
-  temp copy PASS; offline assertion for the two zones and two endpoints PASS;
-  `git diff --check` PASS.
+- `scripts/azure/apply-once.sh` is the idempotent operator entry point. It
+  initializes only the owner-supplied remote Blob backend, copies configuration
+  into a disposable temporary tree, applies only saved plans, probes the private
+  AKS API, and separates endpoint creation from public-service closure.
+- `argocd/supply-chain-azure-demo-app.yaml` now tolerates an absent release file
+  and enables prune/self-heal. The base chart is inert until promotion supplies
+  `values.release.yaml`; no placeholder image can be scheduled.
+- The main-only `promote` job renders the release template only after verify and
+  lock, requires exactly `sha256:<64 hex>`, stages only
+  `k8s/azure/supply-chain-demo/values.release.yaml`, and is the sole job with
+  `contents: write`. It has no Azure or OIDC authority, and narrow chart path
+  filters prevent its commit from recursively starting another image release.
+- Function VNet integration is wired through the delegated Functions subnet;
+  private closure probes Blob, Queue, Table, Key Vault, Event Hubs, and ACR
+  endpoints before public service access is disabled.
 
-- Repair Task 1 (Codex review follow-up): `syncPolicy.automated` (prune/selfHeal)
-  removed from `argocd/supply-chain-azure-demo-app.yaml`. Validation:
-  offline YAML assertion confirms `"automated" not in syncPolicy` (PASS),
-  `helm lint k8s/azure/supply-chain-demo` (PASS), `helm template` render
-  (PASS), `git diff --check` (PASS). Rationale recorded in the app manifest
-  comment and `docs/azure/02-implementation-backlog.md` (B3): private-runner
-  Helm is the release manager; Argo automatic sync stays disabled while
-  committed values are placeholders, and may be restored only through an
-  owner-approved promotion-commit mechanism that writes only the verified and
-  locked digest.
+### Current local validation — 2026-08-31
 
-- `azure-deploy.yml` promotion is main-only with `contents: read`; it renders
-  the verified digest into `values.release.yaml` plus a full manifest evidence
-  artifact. Direct Helm deployment was removed so the reviewed Argo CD
-  Application remains the sole GitOps release boundary.
-- The exact promote render logic was executed locally with placeholder values
-  and a well-formed digest: `envsubst` render + `helm template` +
-  digest-grep on the rendered manifest = PASS. The initial grep against the
-  values file (before the fix) correctly failed locally — repository and
-  digest render on separate lines in values.yaml, so the digest assertion must
-  run against the rendered manifest; the workflow encodes the corrected order.
-- `docs/azure/04-live-validation-checklist.md` remains the live execution gate.
-  Trusted image release, reviewed values promotion, and private closure remain
-  `LIVE_VALIDATION_PENDING`.
+The following checks were run from the current worktree; Terraform was
+initialized and validated only in a temporary copy outside the repository:
+
+- `bash -n scripts/azure/apply-once.sh` — PASS.
+- `scripts/azure/apply-once.sh --help` and both dry-run modes — PASS.
+- Every Azure Terraform root, including the composed production root,
+  `terraform init -backend=false` plus `terraform validate` — PASS.
+- `helm lint` for the workload, policy, and Argo Application charts — PASS.
+- Azure GitOps and one-command automation contract tests — PASS.
+- Base/release Helm render assertion — PASS.
+
+These are static results only. Remote-backend initialization from this host
+failed because the configured private Blob hostname was not resolvable; the
+live subscription also currently reports the resource groups as absent.
 
 ## Live core validation — 2026-08-30
 

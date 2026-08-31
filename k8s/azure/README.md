@@ -6,23 +6,20 @@ GCP chart. Only the registry source changes: AKS pulls from ACR through its
 kubelet managed identity, so no `imagePullSecret` or ACR admin credential is
 stored in the chart.
 
-Before the Azure Argo CD Application is created or synced, render a verified
-ACR image digest into a temporary values file:
+The Terraform Kubernetes-addons module installs the private Argo CD Application
+from `argocd/supply-chain-azure-demo-app.yaml`. The base chart is intentionally
+inert, so it can be installed before a release exists. The trusted main
+workflow generates `values.release.yaml` only after image verification and
+locking:
 
 ```bash
-export ACR_LOGIN_SERVER='YOUR_REGISTRY.azurecr.io'
-export ACR_APPLICATION_REPOSITORY='supply-chain-security/supply-chain-demo'
-export IMAGE_DIGEST='sha256:REPLACE_WITH_A_DIGEST_VERIFIED_BY_AZURE-VERIFY'
-
-envsubst < k8s/azure/supply-chain-demo/values.yaml >/tmp/supply-chain-azure-values.yaml
 helm lint k8s/azure/supply-chain-demo
 helm template supply-chain-demo k8s/azure/supply-chain-demo \
-  --values /tmp/supply-chain-azure-values.yaml
+  --values k8s/azure/supply-chain-demo/values.release.yaml.example
 ```
 
-The Argo CD Application consumes `values.release.yaml`, which must be
-added by an owner-reviewed promotion change only after the trusted Azure main
-workflow has completed build, scan, signing, attestation, verification, and
-image locking. Do not sync the checked-in placeholder values: they intentionally
-do not form a valid OCI image reference. `values.release.yaml.example`
-documents the shape without inventing an Azure registry or digest.
+The main-only promotion job then commits only the generated
+`values.release.yaml`; Argo automatically self-heals the digest-pinned
+Deployment. Never replace the generated file with a mutable tag or a guessed
+digest. `values.release.yaml.example` documents the shape without inventing a
+real Azure registry or release.

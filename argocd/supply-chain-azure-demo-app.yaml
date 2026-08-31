@@ -13,10 +13,14 @@ spec:
       releaseName: supply-chain-demo
       valueFiles:
         - values.release.yaml
+      ignoreMissingValueFiles: true
   destination:
     server: https://kubernetes.default.svc
     namespace: default
-  # Automatic sync is deliberately absent until an owner-approved promotion
-  # change adds values.release.yaml with the verified, locked digest. The
-  # checked-in base values and this example file are intentionally inert.
-  syncPolicy: {}
+  # The base chart is inert while values.release.yaml is absent. The trusted
+  # main promotion job creates that file only after verification and locking.
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false

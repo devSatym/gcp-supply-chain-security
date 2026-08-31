@@ -299,7 +299,13 @@ variable "enable_runtime_alerting" {
 }
 
 variable "enable_private_endpoints" {
-  description = "Stage-3 gate: create Private Endpoints for ACR/Key Vault/Event Hubs/Function storage and turn off their public network access. Enable only after DNS and runner connectivity are confirmed."
+  description = "Create Private Endpoints for ACR/Key Vault/Event Hubs/Function storage. This does not disable public service access; use disable_public_network_access after private DNS and connectivity are proven."
+  type        = bool
+  default     = false
+}
+
+variable "disable_public_network_access" {
+  description = "Final private-closure gate for ACR, Key Vault, Event Hubs, and Function storage. It requires enable_private_endpoints and is applied only after private DNS/connectivity probes succeed. AKS remains private regardless of this flag."
   type        = bool
   default     = false
 }
@@ -320,6 +326,17 @@ variable "discord_webhook_url" {
   type        = string
   sensitive   = true
   default     = ""
+}
+
+variable "discord_webhook_secret_version" {
+  description = "Non-secret write-only Key Vault secret version counter used when the opt-in Discord webhook rotates."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.discord_webhook_secret_version >= 1 && floor(var.discord_webhook_secret_version) == var.discord_webhook_secret_version
+    error_message = "discord_webhook_secret_version must be a positive integer."
+  }
 }
 
 variable "owner" {

@@ -73,6 +73,27 @@ attestations are verified against the immutable primary digest, canonical
 GitHub Actions subject, issuer, Rekor, builder, workflow entrypoint, and source
 URI.
 
+## Azure startup
+
+The Azure implementation is additive to the GCP reference implementation. Once
+the owner has bootstrapped the Azure Blob remote-state backend and is running
+from a network that can resolve and reach private AKS, the full Azure rollout is
+started with one command:
+
+```bash
+scripts/azure/apply-once.sh --mode core
+```
+
+The runner uses the configured Azure remote backend, applies saved Terraform
+plans, verifies the private AKS control-plane path, and installs the Azure
+add-ons and GitOps application. Use `--mode private` only when the required
+private endpoints and a private GitHub Actions runner are ready; it closes
+public service access only after the prerequisite connectivity checks pass.
+
+See the [Azure startup guide](scripts/azure/README.md) for owner-supplied
+inputs and the [Azure status and validation guide](docs/azure/README.md) for
+the current live-readiness state.
+
 ## Repository map
 
 ```text

@@ -25,6 +25,10 @@ locals {
   }))
 
   argocd_values = file("${path.module}/argocd-values.yaml")
+
+  # Keep the reviewed Argo Application manifest as the single source of
+  # truth. The local chart only packages it after Argo's CRDs are installed.
+  argocd_application = yamldecode(file("${path.module}/../../../argocd/supply-chain-azure-demo-app.yaml"))
 }
 
 resource "helm_release" "kyverno" {
@@ -100,4 +104,22 @@ resource "helm_release" "argocd" {
   values = [local.argocd_values]
 
   depends_on = [helm_release.kyverno]
+}
+
+resource "helm_release" "argocd_application" {
+  count = var.install_argocd ? 1 : 0
+
+  name             = "supply-chain-azure-demo-app"
+  chart            = "${path.module}/argocd-application-chart"
+  namespace        = "argocd"
+  create_namespace = false
+  wait             = true
+  atomic           = true
+  timeout          = 300
+
+  values = [yamlencode({
+    application = local.argocd_application
+  })]
+
+  depends_on = [helm_release.argocd]
 }

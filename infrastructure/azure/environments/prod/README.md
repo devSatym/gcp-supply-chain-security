@@ -11,57 +11,39 @@ supply-chain -> kubernetes-addons (Kyverno/Argo CD) -> falco <- falco-alerting
 
 ## Prerequisites
 
-1. Run `infrastructure/azure/bootstrap-state` first and copy its `backend_config`
-   output into the `terraform init -backend-config=...` invocation below.
+1. Run `infrastructure/azure/bootstrap-state` once and provide its remote Blob
+   backend through `--backend-config` or the `TFSTATE_*` environment variables.
 2. The applying principal needs permissions to create resource groups,
    networking, AKS, managed identities, federated credentials, ACR, role
    assignments, Log Analytics, Storage, Key Vault, Event Hubs, and Functions.
 3. Terraform >= 1.11 and `kubelogin` on the PATH of the private-network host.
+4. The applying host must resolve and reach the private AKS API. Private mode
+   additionally requires an owner-approved private GitHub runner before ACR
+   public access can be closed.
 
-## Staged apply
+## One-command convergence
 
-The cluster API is private, so Helm/Kubernetes stages must run from a host
-that can route to the workload VNet and resolve the private API FQDN.
-
-### Stage 1 — foundation (any host with Azure network egress to the APIs)
+Run this from the private-network-capable operator host. It initializes the
+existing remote backend, creates saved plans outside the repository, applies
+the foundation, verifies private AKS DNS/443, and converges add-ons/Argo/Falco:
 
 ```bash
-terraform init \
-  -backend-config='resource_group_name=REPLACE_STATE_RESOURCE_GROUP' \
-  -backend-config='storage_account_name=REPLACE_STATE_STORAGE_ACCOUNT' \
-  -backend-config='container_name=tfstate' \
-  -backend-config='key=azure-supply-chain-security/prod.tfstate' \
-  -backend-config='use_azuread_auth=true'
-terraform plan -out stage1.tfplan
-terraform apply stage1.tfplan
+scripts/azure/apply-once.sh --mode core
 ```
 
-With the default gates (`enable_workload_addons = false`,
-`enable_runtime_alerting = false`, `enable_private_endpoints = false`) stage 1
-creates network, private AKS, and the ACR/supply-chain identities. VNet flow
-logs stay disabled unless the owner supplies a dedicated storage account name.
-No Helm or Kubernetes resource is evaluated.
+`core` leaves ACR and optional alerting services authenticated but publicly
+reachable for hosted GitHub release jobs. AKS is private in both modes.
 
-### Stage 2 — core admission and runtime (private-network host only)
+For the fully private service path, provide the explicit runner acknowledgement:
 
-Resolve the private API FQDN (output `private_fqdn`) from the operator host,
-then set `enable_workload_addons = true` and apply one saved plan from that
-private host. The add-ons module installs Kyverno, waits for its CRDs, installs
-the rendered ClusterPolicy through a dependent local Helm chart, installs the
-pinned private Argo CD foundation, and installs Falco in the same Terraform
-apply. Keep `enable_runtime_alerting = false` unless
-`TF_VAR_discord_webhook_url` is explicitly supplied through the write-only
-Key Vault path.
+```bash
+PRIVATE_GITHUB_RUNNER_READY=true scripts/azure/apply-once.sh --mode private
+```
 
-### Stage 3 — private closure
-
-After confirming private DNS resolution and runner connectivity, set
-`enable_private_endpoints = true` and apply. This creates Private Endpoints
-for the registry (registry + data), Key Vault, Event Hubs, and the Function
-host storage account (**Blob, Queue, and Table** — the services the
-identity-based `AzureWebJobsStorage` requires), and flips every child module's
-public network flag to false. Verify the `registry_public_access_enabled`
-output is `false` before promoting releases.
+The runner creates endpoints with public access still enabled, probes the ACR
+registry/data paths and every enabled alerting path, and only then applies the
+separate `disable_public_network_access=true` closure. It never asks the
+operator to hand-edit Terraform flags between phases.
 
 Before accepting stage-3 closure, confirm from inside the workload VNet that
 private DNS resolves all storage endpoints (`*.blob.core.windows.net`,
@@ -81,7 +63,7 @@ Set repository variables (never secrets) from the outputs:
 | `AZURE_TENANT_ID` | `tenant_id` |
 | `AZURE_SUBSCRIPTION_ID` | `subscription_id` |
 | `ACR_LOGIN_SERVER` | `acr_login_server` |
-| `ACR_REPOSITORY` | `application_image_repository` |
+| `ACR_REPOSITORY` | `application_repository` |
 | `COSIGN_REPOSITORY` | `cosign_metadata_repository` |
 
 The GitHub CI federated credential trusts only
@@ -110,13 +92,12 @@ deployment remains required and is tracked in
 
 ## Release promotion
 
-Build, scan, sign, attest, verify, and lock run in `azure-deploy.yml`; the
-main-only `promote` job renders the verified digest into
-`values.release.yaml` and a manifest artifact with `contents: read`
-only. Add that file through an owner-reviewed GitOps change before enabling
-Argo automatic sync. The base chart values and
-`values.release.yaml.example` are intentionally non-deployable
-placeholders.
+Build, scan, sign, attest, verify, and lock run in `azure-deploy.yml`. The
+main-only `promote` job has the only `contents: write` permission, renders the
+verified digest into `values.release.yaml`, verifies that only that file
+changed, and pushes it to `main`. The private Argo Application automatically
+reconciles the file; the base chart remains inert until that verified release
+exists. Promotion never calls Azure, Helm, or `kubectl`.
 
 ## GCP parity controls
 

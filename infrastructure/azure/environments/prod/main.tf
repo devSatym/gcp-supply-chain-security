@@ -4,10 +4,16 @@
 #   network -> aks -> supply-chain -> (kubernetes-addons, falco)
 #   falco-alerting -> falco (Event Hub coordinates + sidekick identity)
 #
-# Staged applies are required and documented in README.md:
-#   stage 1: network + aks + supply-chain (enable_workload_addons = false)
-#   stage 2: the remaining modules from a private-network host once the API
-#            server FQDN resolves (enable_workload_addons = true).
+# The apply-once runner performs the staged convergence documented in README.md:
+#   foundation -> private API probe -> add-ons/Argo/Falco -> endpoint probe
+#   -> optional public-service closure.
+
+check "private_service_closure" {
+  assert {
+    condition     = !var.disable_public_network_access || var.enable_private_endpoints
+    error_message = "disable_public_network_access requires enable_private_endpoints. Create and probe private endpoints before closing public service access."
+  }
+}
 
 locals {
   tags = merge(
@@ -97,8 +103,9 @@ module "supply_chain" {
   aks_oidc_issuer_url      = module.aks.oidc_issuer_url
   aks_kubelet_principal_id = module.aks.kubelet_identity_object_id
 
-  # Flips to false in stage 3 once the private endpoints below exist.
-  public_network_access_enabled = !var.enable_private_endpoints
+  # This is flipped only by the final closure apply, after the endpoints are
+  # created and the runner has proven private DNS/connectivity.
+  public_network_access_enabled = !var.disable_public_network_access
 
   tags = local.tags
 }
@@ -130,11 +137,14 @@ module "falco_alerting" {
   location            = module.network.location
   name_prefix         = var.alerting_name_prefix
 
-  aks_oidc_issuer_url = module.aks.oidc_issuer_url
-  discord_webhook_url = var.discord_webhook_url
+  aks_oidc_issuer_url            = module.aks.oidc_issuer_url
+  discord_webhook_url            = var.discord_webhook_url
+  discord_webhook_secret_version = var.discord_webhook_secret_version
+  virtual_network_subnet_id      = module.network.functions_subnet_id
 
-  # Flips to false in stage 3 together with the registry.
-  public_network_access_enabled = !var.enable_private_endpoints
+  # This is flipped only by the final closure apply, after the endpoints are
+  # created and the Function's private storage path has been probed.
+  public_network_access_enabled = !var.disable_public_network_access
 
   tags = local.tags
 }
@@ -178,10 +188,11 @@ resource "azurerm_role_assignment" "github_ci_aks_default_namespace_writer" {
   skip_service_principal_aad_check = true
 }
 
-# Stage 3 — private closure. These endpoints are created only after stage 1
-# resources exist; then every public flag in the child modules is turned off
-# by enable_private_endpoints. Registry data endpoints are included because
-# the ACR is created with data_endpoint_enabled = true.
+# Private endpoint creation is intentionally independent from public-service
+# closure. The runner first applies enable_private_endpoints=true with
+# disable_public_network_access=false, probes every private path, and only
+# then applies disable_public_network_access=true. Registry data endpoints are
+# included because the ACR is created with data_endpoint_enabled = true.
 resource "azurerm_private_endpoint" "acr_registry" {
   count = var.enable_private_endpoints ? 1 : 0
 
