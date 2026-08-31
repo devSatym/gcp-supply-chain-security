@@ -16,10 +16,12 @@ spec:
       ignoreMissingValueFiles: true
   destination:
     server: https://kubernetes.default.svc
-    namespace: default
+    namespace: supply-chain
   # The base chart is inert while values.release.yaml is absent. The trusted
   # main promotion job creates that file only after verification and locking.
   syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
     automated:
       prune: true
       selfHeal: true

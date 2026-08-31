@@ -1,0 +1,58 @@
+name: Azure Private DAST
+
+on:
+  workflow_run:
+    workflows: ['Azure Deploy']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  zap-baseline:
+    name: OWASP ZAP baseline through private AKS port-forward
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: [self-hosted, linux, x64, azure-private, azure-trusted]
+    timeout-minutes: 30
+    env:
+      ARM_USE_OIDC: 'true'
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef6 # v2.3.0
+        with:
+          client-id: ${{ vars.AZURE_TERRAFORM_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get private AKS context without a kubeconfig secret
+        run: |
+          set -Eeuo pipefail
+          az aks get-credentials --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --name "${{ vars.AKS_CLUSTER_NAME }}" --overwrite-existing
+          kubelogin convert-kubeconfig -l azurecli
+          kubectl -n supply-chain get service supply-chain-demo
+
+      - name: Run ZAP baseline against private ClusterIP service
+        run: |
+          set -Eeuo pipefail
+          kubectl -n supply-chain port-forward service/supply-chain-demo 8080:80 > "${RUNNER_TEMP}/port-forward.log" 2>&1 &
+          port_forward_pid=$!
+          trap 'kill "$port_forward_pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/health && break || sleep 1; done
+          docker run --rm --network host -v "${RUNNER_TEMP}:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://127.0.0.1:8080 -J zap-report.json -r zap-report.html -m 2
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: azure-private-zap-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/zap-report.json
+            ${{ runner.temp }}/zap-report.html
+            ${{ runner.temp }}/port-forward.log
+          if-no-files-found: warn
+          retention-days: 30

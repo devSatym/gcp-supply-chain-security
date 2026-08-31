@@ -1,0 +1,131 @@
+name: Azure Infrastructure Converge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infrastructure/azure/**'
+      - 'policy/azure/**'
+      - 'argocd/supply-chain-azure-demo-app.yaml'
+      - 'k8s/azure/**'
+      - '.github/workflows/azure-converge.yml'
+      - '.github/actions/azure-auth/**'
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "apply" to converge the trusted main Azure platform.'
+        required: true
+        type: string
+
+concurrency:
+  group: azure-infrastructure-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  converge:
+    name: Converge private Azure platform
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.inputs.confirm == 'apply')
+    runs-on: [self-hosted, linux, x64, azure-private, azure-trusted]
+    timeout-minutes: 90
+    env:
+      ARM_USE_OIDC: 'true'
+      ARM_USE_AZUREAD: 'true'
+      ARM_CLIENT_ID: ${{ vars.AZURE_TERRAFORM_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_private_runner_admin_ssh_public_key: ${{ vars.AZURE_PRIVATE_RUNNER_SSH_PUBLIC_KEY }}
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: '0'
+    steps:
+      - name: Refuse incomplete configuration
+        run: |
+          set -Eeuo pipefail
+          test -n "$ARM_CLIENT_ID"
+          test -n "$ARM_TENANT_ID"
+          test -n "$ARM_SUBSCRIPTION_ID"
+          test -n "$TF_VAR_private_runner_admin_ssh_public_key"
+          for name in TFSTATE_RESOURCE_GROUP_NAME TFSTATE_STORAGE_ACCOUNT_NAME TFSTATE_CONTAINER_NAME TFSTATE_KEY; do
+            test -n "${!name:-}" || {
+              echo "Missing GitHub repository variable $name" >&2
+              exit 1
+            }
+          done
+        env:
+          TFSTATE_RESOURCE_GROUP_NAME: ${{ vars.TFSTATE_RESOURCE_GROUP_NAME }}
+          TFSTATE_STORAGE_ACCOUNT_NAME: ${{ vars.TFSTATE_STORAGE_ACCOUNT_NAME }}
+          TFSTATE_CONTAINER_NAME: ${{ vars.TFSTATE_CONTAINER_NAME }}
+          TFSTATE_KEY: ${{ vars.TFSTATE_KEY }}
+
+      - name: Checkout trusted main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Azure OIDC login for private AKS kubelogin
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef6 # v2.3.0
+        with:
+          client-id: ${{ vars.AZURE_TERRAFORM_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Assert private execution context
+        run: |
+          set -Eeuo pipefail
+          private_fqdn="$(az aks show --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --name "${{ vars.AKS_CLUSTER_NAME }}" --query privateFqdn -o tsv)"
+          [[ "$private_fqdn" == *privatelink* || "$private_fqdn" == *.private.*.azmk8s.io ]]
+          getent ahostsv4 "$private_fqdn" >/dev/null
+          timeout 15 bash -c ": </dev/tcp/${private_fqdn}/443"
+          test -z "$(curl -fsS http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01 -H Metadata:true 2>/dev/null || true)"
+
+      - name: Initialize remote Azure Blob state through OIDC
+        working-directory: infrastructure/azure/environments/prod
+        run: |
+          set -Eeuo pipefail
+          export TF_DATA_DIR="${RUNNER_TEMP}/terraform-data"
+          terraform init -input=false -reconfigure \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP_NAME }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT_NAME }}" \
+            -backend-config="container_name=${{ vars.TFSTATE_CONTAINER_NAME }}" \
+            -backend-config="key=${{ vars.TFSTATE_KEY }}" \
+            -backend-config='use_azuread_auth=true' \
+            -backend-config='use_oidc=true'
+
+      - name: Plan and reject destructive changes
+        working-directory: infrastructure/azure/environments/prod
+        run: |
+          set -Eeuo pipefail
+          export TF_DATA_DIR="${RUNNER_TEMP}/terraform-data"
+          terraform plan -input=false -out="${RUNNER_TEMP}/azure-platform.tfplan"
+          terraform show -json "${RUNNER_TEMP}/azure-platform.tfplan" > "${RUNNER_TEMP}/azure-platform.plan.json"
+          python3 - "${RUNNER_TEMP}/azure-platform.plan.json" <<'PY'
+          import json
+          import sys
+          plan = json.load(open(sys.argv[1], encoding="utf-8"))
+          unsafe = []
+          for change in plan.get("resource_changes", []):
+              actions = change.get("change", {}).get("actions", [])
+              if "delete" in actions or set(actions) == {"create", "delete"}:
+                  unsafe.append((change.get("address", "unknown"), actions))
+          if unsafe:
+              for address, actions in unsafe:
+                  print(f"Unsafe Terraform action: {address}: {actions}", file=sys.stderr)
+              raise SystemExit("Refusing automatic destructive infrastructure changes")
+          PY
+
+      - name: Apply saved non-destructive plan
+        working-directory: infrastructure/azure/environments/prod
+        run: terraform apply -input=false "${RUNNER_TEMP}/azure-platform.tfplan"
+
+      - name: Record convergence summary
+        working-directory: infrastructure/azure/environments/prod
+        run: |
+          set -Eeuo pipefail
+          {
+            echo '## Azure infrastructure converged'
+            echo ''
+            echo '- Remote Blob state: OIDC + Entra data-plane authorization'
+            echo '- Execution: private self-hosted runner; private AKS API validated'
+            echo '- Destructive plans: rejected automatically'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -98,6 +98,29 @@ variable "functions_subnet_address_prefixes" {
   }
 }
 
+variable "private_runner_subnet_name" {
+  description = "Name of the isolated subnet used only by the private GitHub Actions runner."
+  type        = string
+  default     = "snet-ci-runner"
+}
+
+variable "private_runner_subnet_address_prefixes" {
+  description = "Address prefixes for the private GitHub Actions runner subnet."
+  type        = list(string)
+  default     = ["10.0.64.0/24"]
+
+  validation {
+    condition     = alltrue([for cidr in var.private_runner_subnet_address_prefixes : can(cidrnetmask(cidr))])
+    error_message = "private_runner_subnet_address_prefixes must contain valid CIDRs."
+  }
+}
+
+variable "attach_nat_gateway_to_private_runner" {
+  description = "Whether the private runner subnet uses the controlled NAT Gateway for outbound HTTPS-only access."
+  type        = bool
+  default     = true
+}
+
 variable "nat_gateway_idle_timeout_in_minutes" {
   description = "TCP idle timeout for the NAT Gateway."
   type        = number

@@ -53,6 +53,11 @@ output "functions_subnet_id" {
   value       = azurerm_subnet.functions.id
 }
 
+output "private_runner_subnet_id" {
+  description = "ID of the no-public-IP subnet reserved for the GitHub Actions runner."
+  value       = azurerm_subnet.private_runner.id
+}
+
 output "function_subnet_id" {
   description = "Compatibility alias for the Azure Functions VNet Integration subnet ID."
   value       = azurerm_subnet.functions.id
@@ -79,6 +84,7 @@ output "network_security_group_ids" {
     aks_nodes         = azurerm_network_security_group.aks_nodes.id
     functions         = azurerm_network_security_group.functions.id
     private_endpoints = azurerm_network_security_group.private_endpoints.id
+    private_runner    = azurerm_network_security_group.private_runner.id
   }
 }
 

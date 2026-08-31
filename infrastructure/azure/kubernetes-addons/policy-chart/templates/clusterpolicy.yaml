@@ -1,3 +1,4 @@
-{{- if .Values.policy }}
-{{ toYaml .Values.policy }}
+{{- range .Values.policies }}
+{{ toYaml . }}
+---
 {{- end }}

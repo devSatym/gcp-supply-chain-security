@@ -2,10 +2,14 @@ locals {
   # This identity is deliberately fixed to the protected release ref. The
   # feature branch can validate this module, but it cannot exchange a GitHub
   # OIDC token for Azure production access.
-  github_oidc_issuer      = "https://token.actions.githubusercontent.com"
-  github_oidc_audience    = "api://AzureADTokenExchange"
-  github_release_ref      = "refs/heads/main"
-  github_ci_subject       = "repo:${var.github_repository}:ref:${local.github_release_ref}"
+  github_oidc_issuer   = "https://token.actions.githubusercontent.com"
+  github_oidc_audience = "api://AzureADTokenExchange"
+  github_release_ref   = "refs/heads/main"
+  # GitHub's immutable OIDC subject uses the repository owner and repository
+  # numeric IDs. It remains stable across repository renames and is materially
+  # safer than a mutable name-only subject. The exact subject is supplied by
+  # the environment after verifying GitHub's OIDC customization response.
+  github_ci_subject       = var.github_oidc_subject
   kyverno_service_subject = "system:serviceaccount:${var.kyverno_namespace}:${var.kyverno_service_account_name}"
   protected_repositories  = toset([var.application_repository, var.cosign_metadata_repository])
 
@@ -106,6 +110,18 @@ resource "azurerm_federated_identity_credential" "github_ci_main" {
   audience            = [local.github_oidc_audience]
   issuer              = local.github_oidc_issuer
   parent_id           = azurerm_user_assigned_identity.github_ci.id
+  # Retain the legacy name-based credential during the one-time OIDC
+  # migration. It has no usable subject once immutable OIDC is enabled, and
+  # is removed only after the immutable path has been proven in CI.
+  subject = "repo:${var.github_repository}:ref:${local.github_release_ref}"
+}
+
+resource "azurerm_federated_identity_credential" "github_ci_main_immutable" {
+  name                = "github-main-immutable"
+  resource_group_name = var.resource_group_name
+  audience            = [local.github_oidc_audience]
+  issuer              = local.github_oidc_issuer
+  parent_id           = azurerm_user_assigned_identity.github_ci.id
   subject             = local.github_ci_subject
 }
 
@@ -129,6 +145,84 @@ resource "azurerm_role_assignment" "github_ci_catalog_lister" {
   principal_type                   = "ServicePrincipal"
   skip_service_principal_aad_check = true
   description                      = "Optional registry-wide catalog listing for GitHub CI."
+}
+
+# Terraform receives a distinct identity from release CI. It exists only when
+# the environment supplies the exact remote-state account and workload scopes;
+# no static client credentials, storage keys, or kubeconfig are ever needed.
+resource "azurerm_user_assigned_identity" "github_terraform" {
+  count = var.enable_github_terraform_identity ? 1 : 0
+
+  name                = "${var.name_prefix}-github-terraform"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  tags                = local.tags
+
+  lifecycle {
+    precondition {
+      condition = (
+        var.terraform_workload_scope_id != null &&
+        var.terraform_aks_scope_id != null &&
+        var.terraform_state_storage_account_id != null
+      )
+      error_message = "The Terraform identity requires workload, AKS, and remote-state resource IDs."
+    }
+  }
+}
+
+resource "azurerm_federated_identity_credential" "github_terraform_main_immutable" {
+  count = var.enable_github_terraform_identity ? 1 : 0
+
+  name                = "github-terraform-main-immutable"
+  resource_group_name = var.resource_group_name
+  audience            = [local.github_oidc_audience]
+  issuer              = local.github_oidc_issuer
+  parent_id           = azurerm_user_assigned_identity.github_terraform[0].id
+  subject             = var.github_oidc_subject
+}
+
+resource "azurerm_role_assignment" "github_terraform_workload_contributor" {
+  count = var.enable_github_terraform_identity ? 1 : 0
+
+  scope                            = var.terraform_workload_scope_id
+  role_definition_name             = "Contributor"
+  principal_id                     = azurerm_user_assigned_identity.github_terraform[0].principal_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+  description                      = "Terraform convergence identity for the Azure workload resource group."
+}
+
+resource "azurerm_role_assignment" "github_terraform_workload_access_admin" {
+  count = var.enable_github_terraform_identity ? 1 : 0
+
+  scope                            = var.terraform_workload_scope_id
+  role_definition_name             = "User Access Administrator"
+  principal_id                     = azurerm_user_assigned_identity.github_terraform[0].principal_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+  description                      = "Terraform convergence identity may create only workload-scoped role assignments."
+}
+
+resource "azurerm_role_assignment" "github_terraform_aks_cluster_admin" {
+  count = var.enable_github_terraform_identity ? 1 : 0
+
+  scope                            = var.terraform_aks_scope_id
+  role_definition_name             = "Azure Kubernetes Service RBAC Cluster Admin"
+  principal_id                     = azurerm_user_assigned_identity.github_terraform[0].principal_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+  description                      = "Terraform convergence identity administers only this private AKS cluster."
+}
+
+resource "azurerm_role_assignment" "github_terraform_state_blob_contributor" {
+  count = var.enable_github_terraform_identity ? 1 : 0
+
+  scope                            = var.terraform_state_storage_account_id
+  role_definition_name             = "Storage Blob Data Contributor"
+  principal_id                     = azurerm_user_assigned_identity.github_terraform[0].principal_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+  description                      = "Terraform convergence identity may read and lock only remote Azure Blob state."
 }
 
 # Kyverno's admission controller is the only Kubernetes ServiceAccount trusted

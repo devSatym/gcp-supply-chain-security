@@ -45,7 +45,7 @@ permissions:
 jobs:
   build:
     name: Build and Push Azure Image
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, azure-private, azure-trusted]
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     steps:

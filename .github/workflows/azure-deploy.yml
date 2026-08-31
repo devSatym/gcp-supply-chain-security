@@ -108,7 +108,7 @@ jobs:
   sbom-vex:
     name: Azure SBOM and VEX (non-blocking)
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.inputs.confirm == 'deploy')
-    uses: ./.github/workflows/sbom-vex.yml
+    uses: ./.github/workflows/azure-sbom-vex.yml
 
   sign-attest:
     name: Azure Sign and Attest

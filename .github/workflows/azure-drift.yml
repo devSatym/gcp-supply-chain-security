@@ -1,0 +1,60 @@
+name: Azure Drift Detection
+
+on:
+  schedule:
+    - cron: '23 3 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  drift:
+    name: Read-only private Azure drift plan
+    runs-on: [self-hosted, linux, x64, azure-private, azure-trusted]
+    timeout-minutes: 45
+    env:
+      ARM_USE_OIDC: 'true'
+      ARM_USE_AZUREAD: 'true'
+      ARM_CLIENT_ID: ${{ vars.AZURE_TERRAFORM_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_private_runner_admin_ssh_public_key: ${{ vars.AZURE_PRIVATE_RUNNER_SSH_PUBLIC_KEY }}
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: '0'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef6 # v2.3.0
+        with:
+          client-id: ${{ vars.AZURE_TERRAFORM_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Initialize remote state and produce read-only plan
+        id: plan
+        working-directory: infrastructure/azure/environments/prod
+        run: |
+          set +e
+          export TF_DATA_DIR="${RUNNER_TEMP}/terraform-data"
+          terraform init -input=false -reconfigure \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP_NAME }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT_NAME }}" \
+            -backend-config="container_name=${{ vars.TFSTATE_CONTAINER_NAME }}" \
+            -backend-config="key=${{ vars.TFSTATE_KEY }}" \
+            -backend-config='use_azuread_auth=true' \
+            -backend-config='use_oidc=true'
+          terraform plan -input=false -detailed-exitcode -no-color > "${RUNNER_TEMP}/azure-drift.txt"
+          exit_code=$?
+          cat "${RUNNER_TEMP}/azure-drift.txt"
+          case "$exit_code" in
+            0) echo 'status=clean' >> "$GITHUB_OUTPUT" ;;
+            2) echo 'status=drift' >> "$GITHUB_OUTPUT" ;;
+            *) exit "$exit_code" ;;
+          esac
+
+      - name: Publish drift result
+        run: |
+          echo "## Azure drift: ${{ steps.plan.outputs.status }}" >> "$GITHUB_STEP_SUMMARY"
+          test "${{ steps.plan.outputs.status }}" = clean

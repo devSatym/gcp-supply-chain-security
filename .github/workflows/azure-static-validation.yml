@@ -134,9 +134,14 @@ jobs:
       - name: Check Azure one-command automation contract
         run: python3 policy/azure/tests/check_azure_automation_contract.py
 
+      - name: Check Azure private workload hardening contract
+        run: python3 policy/azure/tests/check_workload_hardening.py
+
       - name: Check one-command wrapper without Azure access
         run: |
           bash -n scripts/azure/apply-once.sh
+          bash -n scripts/azure/register-private-runner.sh
+          bash -n scripts/github/harden-public-repository.sh
           scripts/azure/apply-once.sh --dry-run --mode core
 
       - name: Lint and render Azure Helm chart
@@ -156,8 +161,8 @@ jobs:
           release = [d for d in yaml.safe_load_all(Path("/tmp/supply-chain-azure-release.yaml").read_text()) if d]
           base_kinds = {d["kind"] for d in base}
           release_kinds = {d["kind"] for d in release}
-          assert not base_kinds & {"Deployment", "Service"}, f"base chart is not inert: {sorted(base_kinds)}"
-          assert {"Deployment", "Service"} <= release_kinds, f"release chart is missing workload: {sorted(release_kinds)}"
+          assert not base_kinds & {"Deployment", "Service", "PodDisruptionBudget"}, f"base chart is not inert: {sorted(base_kinds)}"
+          assert {"Namespace", "ServiceAccount", "NetworkPolicy", "Deployment", "Service", "PodDisruptionBudget"} <= release_kinds, f"release chart is missing hardened workload resources: {sorted(release_kinds)}"
           for d in release:
               if d["kind"] != "Deployment":
                   continue
@@ -191,6 +196,7 @@ jobs:
             infrastructure/azure/bootstrap-state
             infrastructure/azure/supply-chain
             infrastructure/azure/network
+            infrastructure/azure/monitoring
             infrastructure/azure/aks
             infrastructure/azure/kubernetes-addons
             infrastructure/azure/falco
