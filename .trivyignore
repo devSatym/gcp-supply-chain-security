@@ -93,3 +93,11 @@ CVE-2026-57433
 # Same package and same reasoning as CVE-2026-13221 -- no Perl invocation
 # anywhere in this app, inherited from base image only, code path unreachable.
 CVE-2026-57432
+
+# CVE-2026-11822 and CVE-2026-11824: SQLite FTS5 issues in Debian Trixie
+# currently have no fixed package. This image exposes only three static
+# FastAPI routes and has no database dependency, SQL execution, SQLite import,
+# user-controlled database file, or FTS5 use. Reassess and remove these
+# exceptions as soon as Debian publishes fixed libsqlite3-0 packages.
+CVE-2026-11822
+CVE-2026-11824
