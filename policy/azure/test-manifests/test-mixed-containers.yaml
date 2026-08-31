@@ -6,6 +6,10 @@ metadata:
     test: azure-mixed
 spec:
   restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
   initContainers:
     - name: signer-init
       image: example.azurecr.io/supply-chain-security/supply-chain-demo@sha256:4444444444444444444444444444444444444444444444444444444444444444
@@ -13,6 +17,9 @@ spec:
       securityContext:
         runAsNonRoot: true
         allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
   containers:
     - name: signed-app
       image: example.azurecr.io/supply-chain-security/supply-chain-demo@sha256:5555555555555555555555555555555555555555555555555555555555555555
@@ -20,9 +27,15 @@ spec:
       securityContext:
         runAsNonRoot: true
         allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
     - name: unsigned-sidecar
       image: example.azurecr.io/supply-chain-security/supply-chain-demo@sha256:6666666666666666666666666666666666666666666666666666666666666666
       command: ["sh", "-c", "sleep 3600"]
       securityContext:
         runAsNonRoot: true
         allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]

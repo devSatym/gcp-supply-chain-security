@@ -6,6 +6,10 @@ metadata:
     test: azure-init-unsigned
 spec:
   restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
   initContainers:
     - name: unsigned-init
       # verifyImages applies to init containers too; the signed main container
@@ -15,6 +19,9 @@ spec:
       securityContext:
         runAsNonRoot: true
         allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
   containers:
     - name: signed-main
       image: example.azurecr.io/supply-chain-security/supply-chain-demo@sha256:3333333333333333333333333333333333333333333333333333333333333333
@@ -22,3 +29,6 @@ spec:
       securityContext:
         runAsNonRoot: true
         allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]

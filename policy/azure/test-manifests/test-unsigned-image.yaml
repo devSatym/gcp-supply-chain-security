@@ -6,6 +6,10 @@ metadata:
     test: azure-unsigned
 spec:
   restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: unsigned-app
       # Matches the rendered ClusterPolicy imageReferences but has no Cosign
@@ -15,3 +19,6 @@ spec:
       securityContext:
         runAsNonRoot: true
         allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
