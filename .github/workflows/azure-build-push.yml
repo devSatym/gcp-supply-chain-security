@@ -56,6 +56,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
       - name: Authenticate to Azure Container Registry
         if: inputs.push
         uses: ./.github/actions/azure-auth
@@ -93,7 +96,7 @@ jobs:
           limit-severities-for-sarif: true
 
       - name: Upload Azure image scan SARIF
-        if: inputs.push && always()
+        if: inputs.push && always() && hashFiles('trivy-azure-image.sarif') != ''
         uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
         with:
           sarif_file: trivy-azure-image.sarif
