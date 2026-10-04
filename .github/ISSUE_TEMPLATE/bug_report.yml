@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a reproducible problem in the active Azure implementation.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For vulnerabilities, follow the repository's SECURITY.md instead of opening a public issue.
+        Use sanitized excerpts only. Do not include tokens, credentials, kubeconfigs, webhook URLs, Terraform state, or raw debug dumps.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the affected control or behavior and what you expected.
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Repository revision
+      description: Commit SHA, branch, or release tag where the problem occurred.
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where did this occur?
+      options:
+        - Local or static validation
+        - GitHub Actions
+        - Azure or AKS environment
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include minimal safe steps and relevant tool versions. Use offline policy tests for negative fixtures; do not apply them to a live cluster as a reproduction step.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Validation and sanitized evidence
+      description: Provide commands and results, a public workflow run link, or a short redacted error excerpt. Distinguish local validation from observed live Azure behavior.

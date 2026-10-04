@@ -1,0 +1,34 @@
+name: Feature request
+description: Propose a focused improvement to security, operations, or documentation.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Azure is the active platform. Historical GCP functionality is archived at final-gcp-commit.
+        For vulnerabilities, follow SECURITY.md. Keep secrets and personal account information out of public issues.
+  - type: textarea
+    id: need
+    attributes:
+      label: Problem or use case
+      description: What practical problem would this solve? Link relevant existing behavior or documentation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Explain the smallest useful change and any alternatives considered.
+    validations:
+      required: true
+  - type: textarea
+    id: implications
+    attributes:
+      label: Security and operational implications
+      description: Describe effects on OIDC, trusted main execution, private AKS, artifact trust, costs, or owner-supplied inputs, if relevant.
+  - type: textarea
+    id: validation
+    attributes:
+      label: How would we prove it works?
+      description: Suggest local checks and identify any live Azure evidence needed.
